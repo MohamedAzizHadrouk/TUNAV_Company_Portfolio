@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import { CheckIcon, PencilIcon, PlusIcon, ShieldCheckIcon, Trash2Icon, UsersIcon } from 'lucide-react';
-import { useAccess, permissions, type Account, type Permission, type Role } from '../contexts/AccessContext';
+import { useAccess, permissions, type AccessLevel, type Account, type Permission, type ProductAssignment, type Role } from '../contexts/AccessContext';
+import { usePortfolio } from '../contexts/PortfolioContext';
+import { productSections } from '../data/sections';
+import type { Product } from '../types/portfolio';
 import { Modal } from '../components/Modal';
 
 export function Settings() {
   const access = useAccess();
+  const { products } = usePortfolio();
   const [tab, setTab] = useState<'accounts' | 'roles'>('accounts');
   const [accountForm, setAccountForm] = useState<Account | 'new' | null>(null);
   const [roleForm, setRoleForm] = useState<Role | 'new' | null>(null);
@@ -14,7 +18,7 @@ export function Settings() {
   const canRoles = access.can('roles.manage');
 
   return <div className="mx-auto max-w-6xl space-y-6">
-    <div className="rounded-2xl border border-line bg-gradient-to-br from-brand-50 via-white to-white p-5 sm:p-7">
+    <div className="rounded-2xl border border-line border-l-4 border-l-brand bg-white p-5 sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-brand-700">Workspace settings</p>
@@ -67,7 +71,7 @@ export function Settings() {
       </div>}
     </div>
     <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">MVP note: accounts and permissions are stored only in this browser. Account switching is for preview and testing; it is not secure authentication or shared access across devices.</p>
-    <AccountModal key={accountForm === 'new' ? 'new' : accountForm?.id ?? 'closed'} account={accountForm} roles={access.roles} onClose={() => setAccountForm(null)} onSave={(input) => { const result = access.saveAccount(input); if (result) { setNotice(input.id ? 'Account updated.' : 'Account created.'); setAccountForm(null); } return !!result; }} />
+    <AccountModal key={accountForm === 'new' ? 'new' : accountForm?.id ?? 'closed'} account={accountForm} roles={access.roles} products={products} onClose={() => setAccountForm(null)} onSave={(input) => { const result = access.saveAccount(input); if (result) { setNotice(input.id ? 'Account updated.' : 'Account created.'); setAccountForm(null); } return !!result; }} />
     <RoleModal key={roleForm === 'new' ? 'new' : roleForm?.id ?? 'closed'} role={roleForm} onClose={() => setRoleForm(null)} onSave={(input) => { const result = access.saveRole(input); if (result) { setNotice(input.id ? 'Role updated.' : 'Role created.'); setRoleForm(null); } return !!result; }} />
     <Modal open={!!removing} title={`Delete ${removing?.type ?? 'item'}`} onClose={() => setRemoving(null)} footer={<><button className="btn-ghost" onClick={() => setRemoving(null)}>Cancel</button><button className="btn-primary bg-red-600 hover:bg-red-700" onClick={() => { if (!removing) return; const ok = removing.type === 'account' ? access.deleteAccount(removing.id) : access.deleteRole(removing.id); setNotice(ok ? `${removing.type === 'account' ? 'Account' : 'Role'} deleted.` : 'This item cannot be deleted while it is in use or is the last administrator.'); setRemoving(null); }}>Delete</button></>}><p className="text-sm text-muted">Delete <strong className="text-ink">{removing?.name}</strong> from this browser?</p></Modal>
   </div>;
@@ -76,11 +80,43 @@ export function Settings() {
 function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) { return <div className="flex items-center gap-3 rounded-xl border border-line bg-white p-4"><div className="rounded-lg bg-brand-50 p-2.5 text-brand-700">{icon}</div><div><p className="text-xs text-muted">{label}</p><p className="text-xl font-semibold text-ink">{value}</p></div></div>; }
 function initials(name: string) { return name.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? '').join(''); }
 
-function AccountModal({ account, roles, onClose, onSave }: { account: Account | 'new' | null; roles: Role[]; onClose: () => void; onSave: (input: Omit<Account, 'id'> & { id?: string }) => boolean }) {
+function defaultAssignment(product: Product, roleId: string): ProductAssignment {
+  const sections: Record<string, AccessLevel> = Object.fromEntries([{ id: 'flow' }, ...productSections].map((section) => [section.id, 'read' as AccessLevel]));
+  if (roleId === 'viewer') sections.ideas = 'write';
+  if (roleId === 'dev-lead') sections.agenda = 'write';
+  if (roleId === 'uiux-designer') { sections['design-system'] = 'write'; sections.showcase = 'write'; }
+  if (roleId === 'technical-manager') sections.hardware = 'write';
+  if (roleId === 'commercial-manager') { sections['sales-arguments'] = 'write'; sections['sales-offers'] = 'write'; }
+  const backlogCardIds = [
+    ...product.capabilities.map((item) => item.id),
+    ...product.backlog.epics.flatMap((epic) => [epic.id, ...epic.features.flatMap((feature) => [feature.id, ...feature.stories.map((story) => story.id)])])
+  ];
+  const cards: Record<string, AccessLevel> = Object.fromEntries([
+    ...backlogCardIds.map((id) => [id, roleId === 'product-owner' ? 'write' : 'read']),
+    ...product.backlog.sprints.map((sprint) => [sprint.id, roleId === 'dev-lead' ? 'write' : 'read'])
+  ] as [string, AccessLevel][]);
+  return { productId: product.id, sections, cards };
+}
+
+function AccountModal({ account, roles, products, onClose, onSave }: { account: Account | 'new' | null; roles: Role[]; products: Product[]; onClose: () => void; onSave: (input: Omit<Account, 'id'> & { id?: string }) => boolean }) {
   const existing = account && account !== 'new' ? account : null;
   const [name, setName] = useState(existing?.name ?? ''); const [email, setEmail] = useState(existing?.email ?? ''); const [roleId, setRoleId] = useState(existing?.roleId ?? 'viewer'); const [active, setActive] = useState(existing?.active ?? true); const [error, setError] = useState('');
-  const submit = () => { if (!name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Enter a name and a valid email address.'); return; } if (!onSave({ id: existing?.id, name, email, roleId, active })) setError('Could not save. Check for a duplicate email or keep one active administrator.'); };
-  return <Modal open={!!account} title={existing ? 'Edit account' : 'Add account'} onClose={onClose} footer={<><button className="btn-ghost" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={submit}>Save account</button></>}><div className="space-y-4"><label className="block text-sm font-medium text-ink">Full name<input className="field mt-1.5" autoFocus value={name} onChange={(event) => setName(event.target.value)} /></label><label className="block text-sm font-medium text-ink">Email<input className="field mt-1.5" type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label className="block text-sm font-medium text-ink">Role<select className="field mt-1.5" value={roleId} onChange={(event) => setRoleId(event.target.value)}>{roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label><label className="flex items-center gap-2 text-sm text-ink"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Active account</label>{error && <p role="alert" className="text-sm text-red-600">{error}</p>}</div></Modal>;
+  const [selected, setSelected] = useState<Permission[]>(existing?.permissions ?? permissions.map((item) => item.id).filter((permission) => roles.find((role) => role.id === (existing?.roleId ?? 'viewer'))?.permissions.includes(permission) || existing?.grants?.includes(permission)));
+  const [assignments, setAssignments] = useState(existing?.assignments ?? (existing && !['admin', 'visitor'].includes(existing.roleId) ? products.map((product) => defaultAssignment(product, existing.roleId)) : []));
+  const roleDefaults = roles.find((role) => role.id === roleId)?.permissions ?? [];
+  const togglePermission = (permission: Permission) => setSelected((current) => current.includes(permission) ? current.filter((item) => item !== permission) : [...current, permission]);
+  const sections = [{ id: 'flow', label: 'Product flow' }, ...productSections.map((item) => ({ id: item.id, label: item.label }))];
+  const cardsFor = (product: Product) => [
+    ...product.capabilities.map((item) => ({ id: item.id, label: `Capability · ${item.name}` })),
+    ...product.backlog.epics.flatMap((epic) => [{ id: epic.id, label: `Epic · ${epic.title}` }, ...epic.features.flatMap((feature) => [{ id: feature.id, label: `Feature · ${feature.title}` }, ...feature.stories.map((story) => ({ id: story.id, label: `Story · ${story.title}` }))])]),
+    ...product.backlog.sprints.map((item) => ({ id: item.id, label: `Sprint · ${item.name}` }))
+  ];
+  const setAssignment = (productId: string, kind: 'sections' | 'cards', id: string, value: string) => setAssignments((current) => current.map((item) => item.productId === productId ? { ...item, [kind]: { ...item[kind], [id]: value || undefined } } : item));
+  const submit = () => { if (!name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Enter a name and a valid email address.'); return; } if (!onSave({ id: existing?.id, name, email, roleId, active, permissions: selected, assignments })) setError('Could not save. Check for a duplicate email or keep one active administrator.'); };
+  return <Modal open={!!account} size="lg" title={existing ? 'Edit account' : 'Add account'} onClose={onClose} footer={<><button className="btn-ghost" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={submit}>Save account</button></>}><div className="space-y-4"><label className="block text-sm font-medium text-ink">Full name<input className="field mt-1.5" autoFocus value={name} onChange={(event) => setName(event.target.value)} /></label><label className="block text-sm font-medium text-ink">Email<input className="field mt-1.5" type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label className="block text-sm font-medium text-ink">Role<select className="field mt-1.5" value={roleId} onChange={(event) => { const nextRoleId = event.target.value; setRoleId(nextRoleId); setSelected(roles.find((role) => role.id === nextRoleId)?.permissions ?? []); setAssignments((current) => current.map((item) => { const product = products.find((entry) => entry.id === item.productId); return product ? defaultAssignment(product, nextRoleId) : item; })); setError(''); }}>{roles.filter((role) => !['editor', 'visitor'].includes(role.id) || role.id === existing?.roleId).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select><span className="mt-1 block text-xs text-muted">Changing the role reloads its default permissions and product access. Adjust them below before saving.</span></label>
+    <fieldset className="rounded-xl border border-line p-4"><legend className="px-1 text-sm font-semibold text-ink">Account permissions</legend><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted">{selected.length} selected · based on {roles.find((role) => role.id === roleId)?.name ?? 'role'} defaults</p><button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={() => setSelected([...roleDefaults])}>Reset to role defaults</button></div><div className="grid gap-2 sm:grid-cols-2">{permissions.map((option) => <label key={option.id} className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2.5 ${selected.includes(option.id) ? 'border-brand/40 bg-brand-50/50' : 'border-line bg-white'}`}><input type="checkbox" className="mt-0.5" checked={selected.includes(option.id)} onChange={() => togglePermission(option.id)} /><span><strong className="block text-sm font-medium text-ink">{option.label}</strong><span className="text-xs text-muted">{option.description}</span></span></label>)}</div></fieldset>
+    {roleId !== 'admin' && <fieldset className="rounded-xl border border-line p-4"><legend className="px-1 text-sm font-semibold text-ink">Product invitations and access</legend><p className="mb-3 text-xs text-muted">Invite this account to products. Set read, write, or no access for each section and card.</p><div className="space-y-4">{products.map((product) => { const assignment = assignments.find((item) => item.productId === product.id); return <div key={product.id} className="rounded-xl border border-line p-3"><label className="flex items-center gap-2 text-sm font-semibold text-ink"><input type="checkbox" checked={!!assignment} onChange={(event) => setAssignments((current) => event.target.checked ? [...current, defaultAssignment(product, roleId)] : current.filter((item) => item.productId !== product.id))} />{product.name}</label>{assignment && <div className="mt-3 space-y-3 border-t border-line pt-3"><div><p className="mb-1 text-xs font-semibold text-ink">Sections</p>{sections.map((section) => <label key={section.id} className="flex items-center justify-between gap-2 py-1 text-xs text-ink"><span>{section.label}</span><select aria-label={`${product.name} ${section.label} access`} className="field max-w-28 text-xs" value={assignment.sections[section.id] ?? 'none'} onChange={(event) => setAssignment(product.id, 'sections', section.id, event.target.value)}><option value="none">None</option><option value="read">Read</option><option value="write">Write</option></select></label>)}</div><div><p className="mb-1 text-xs font-semibold text-ink">Cards</p>{cardsFor(product).map((card) => <label key={card.id} className="flex items-center justify-between gap-2 py-1 text-xs text-ink"><span className="min-w-0 truncate" title={card.label}>{card.label}</span><select aria-label={`${product.name} ${card.label} access`} className="field max-w-28 shrink-0 text-xs" value={assignment.cards[card.id] ?? 'none'} onChange={(event) => setAssignment(product.id, 'cards', card.id, event.target.value)}><option value="none">None</option><option value="read">Read</option><option value="write">Write</option></select></label>)}</div></div>}</div>; })}</div></fieldset>}
+    <label className="flex items-center gap-2 text-sm text-ink"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Active account</label>{error && <p role="alert" className="text-sm text-red-600">{error}</p>}</div></Modal>;
 }
 
 function RoleModal({ role, onClose, onSave }: { role: Role | 'new' | null; onClose: () => void; onSave: (input: Omit<Role, 'id' | 'system'> & { id?: string }) => boolean }) {

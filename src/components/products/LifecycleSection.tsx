@@ -12,7 +12,7 @@ export function LifecycleSection({ status, onChange }: LifecycleSectionProps) {
   const activeIndex = phases.findIndex((p) => p.id === status);
 
   return (
-    <section aria-label="Status of the product" className="rounded-xl border border-line bg-white p-3">
+    <section aria-label="Status of the product" className="rounded-2xl border border-line bg-white p-5">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
           <ActivityIcon className="h-4 w-4 text-brand" aria-hidden />
@@ -30,7 +30,7 @@ export function LifecycleSection({ status, onChange }: LifecycleSectionProps) {
               role="radio"
               aria-checked={active}
               onClick={() => onChange(p.id)}
-              className={`relative flex flex-col items-start gap-0.5 overflow-hidden rounded-lg border px-2.5 py-2 text-left transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+              className={`relative flex min-h-[88px] flex-col items-start gap-0.5 overflow-hidden rounded-xl border px-3 py-2.5 text-left transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
               active ? 'border-brand bg-brand text-white' : 'border-line bg-white hover:border-brand/40'}`
               }>
               

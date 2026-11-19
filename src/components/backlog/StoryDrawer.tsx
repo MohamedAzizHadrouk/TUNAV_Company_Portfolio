@@ -16,9 +16,10 @@ interface StoryDrawerProps {
   onUpdate: (id: string, changes: Partial<UserStory>) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
+  readOnly?: boolean;
 }
 
-export function StoryDrawer({ entry, backlog, onUpdate, onDelete, onClose }: StoryDrawerProps) {
+export function StoryDrawer({ entry, backlog, onUpdate, onDelete, onClose, readOnly = false }: StoryDrawerProps) {
   useEffect(() => {
     if (!entry) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -49,13 +50,13 @@ export function StoryDrawer({ entry, backlog, onUpdate, onDelete, onClose }: Sto
             exit={{ x: 48, opacity: 0 }}
             transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}>
             
-              <StoryBody
+              {readOnly ? <div className="flex h-full flex-col"><div className="flex items-center justify-between border-b border-line p-5"><h2 className="text-lg font-semibold text-ink">User story</h2><button className="icon-btn" aria-label="Close story" onClick={onClose}><XIcon className="h-4 w-4" /></button></div><div className="space-y-4 overflow-y-auto p-5"><p className="text-xs text-muted">{entry.epic.title} › {entry.feature.title}</p><h3 className="text-base font-semibold text-ink">{entry.story.title}</h3><p className="whitespace-pre-wrap text-sm text-muted">{entry.story.description || 'No description yet.'}</p><p className="text-xs text-muted">{entry.story.points ?? '—'} story points · {entry.story.priority ?? 'medium'} priority</p></div></div> : <StoryBody
               key={entry.story.id}
               entry={entry}
               backlog={backlog}
               onUpdate={(changes) => onUpdate(entry.story.id, changes)}
               onDelete={() => onDelete(entry.story.id)}
-              onClose={onClose} />
+              onClose={onClose} />}
 
             </motion.aside>
           </div>

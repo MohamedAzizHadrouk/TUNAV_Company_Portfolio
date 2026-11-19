@@ -18,8 +18,8 @@ import type { HardwareCapability, HardwareDocument } from '../../types/portfolio
 export function ProductHardware() {
   const { product } = useProduct();
   const { hardware, setHardware } = usePortfolio();
-  const { can } = useAccess();
-  const canEdit = can('portfolio.edit');
+  const { can, canWriteSection } = useAccess();
+  const canEdit = can('portfolio.edit') || !!product && canWriteSection(product.id, 'hardware');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [addingCapability, setAddingCapability] = useState(false);
   const [editingCapability, setEditingCapability] = useState<HardwareCapability | null>(null);

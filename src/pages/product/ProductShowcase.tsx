@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { format } from 'date-fns';
 import { useProduct } from '../../hooks/useProduct';
+import { useAccess } from '../../contexts/AccessContext';
 import { ProductNotFound } from '../../components/products/ProductNotFound';
 import { ProductSubpage } from '../../components/products/ProductSubpage';
 import { AssetView } from '../../components/AssetView';
@@ -13,11 +14,13 @@ import type { ShowcaseCategory, ShowcaseItem } from '../../types/portfolio';
 
 export function ProductShowcase() {
   const { product, patch } = useProduct();
+  const { can, canWriteSection } = useAccess();
   const [category, setCategory] = useState<ShowcaseCategory | 'all'>('all');
   const [editing, setEditing] = useState<ShowcaseItem | null>(null);
   const [creating, setCreating] = useState(false);
 
   if (!product) return <ProductNotFound />;
+  const canEdit = can('portfolio.edit') || canWriteSection(product.id, 'showcase');
   const items = product.showcase;
   const visible = category === 'all' ? items : items.filter((i) => i.category === category);
   const activeCategory = showcaseCategories.find((c) => c.id === category);
@@ -36,7 +39,7 @@ export function ProductShowcase() {
     <ProductSubpage
       product={product}
       sectionId="showcase"
-      actions={<button className="btn-primary" onClick={() => setCreating(true)}><PlusIcon className="h-4 w-4" /> Add resource</button>}>
+      actions={canEdit && <button className="btn-primary" onClick={() => setCreating(true)}><PlusIcon className="h-4 w-4" /> Add resource</button>}>
       
       <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
         <nav aria-label="Showcase categories" className="flex gap-1 overflow-x-auto lg:flex-col">
@@ -66,7 +69,7 @@ export function ProductShowcase() {
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-line px-4 py-10 text-center">
               <p className="text-sm font-semibold text-ink">No {activeCategory ? activeCategory.label.toLowerCase() : 'resources'} yet</p>
               <p className="mt-1 text-sm text-muted">Add a link or upload a file.</p>
-              <button className="btn-primary mt-3" onClick={() => setCreating(true)}><PlusIcon className="h-4 w-4" /> Add resource</button>
+              {canEdit && <button className="btn-primary mt-3" onClick={() => setCreating(true)}><PlusIcon className="h-4 w-4" /> Add resource</button>}
             </div> :
 
           <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -89,10 +92,10 @@ export function ProductShowcase() {
                       {item.description && <p className="mt-1 line-clamp-2 text-sm text-muted">{item.description}</p>}
                       <div className="mt-auto flex items-center justify-between gap-2 pt-4">
                         <div className="min-w-0"><AssetView asset={item.asset} /></div>
-                        <div className="flex shrink-0 gap-0.5">
+                        {canEdit && <div className="flex shrink-0 gap-0.5">
                           <button className="icon-btn" aria-label={`Edit ${item.title}`} onClick={() => setEditing(item)}><PencilIcon className="h-3.5 w-3.5" /></button>
                           <button className="icon-btn hover:text-red-600" aria-label={`Delete ${item.title}`} onClick={() => patch({ showcase: items.filter((x) => x.id !== item.id) })}><Trash2Icon className="h-3.5 w-3.5" /></button>
-                        </div>
+                        </div>}
                       </div>
                       <p className="mt-2 text-[11px] text-muted">Added {format(new Date(item.addedAt), 'MMM d, yyyy')}</p>
                     </div>
@@ -104,7 +107,7 @@ export function ProductShowcase() {
         </div>
       </div>
 
-      <ShowcaseItemModal
+      {canEdit && <ShowcaseItemModal
         open={creating || editing !== null}
         initial={editing}
         defaultCategory={category === 'all' ? 'tutorials' : category}
@@ -112,7 +115,7 @@ export function ProductShowcase() {
           setCreating(false);
           setEditing(null);
         }}
-        onSubmit={save} />
+        onSubmit={save} />}
       
     </ProductSubpage>);
 

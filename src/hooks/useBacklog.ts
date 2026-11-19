@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { createId, today } from '../utils/id';
 import { capabilitiesWithoutEpic, capabilitiesWithoutStory, releaseFeatures } from '../utils/capabilities';
-import { composeStoryTitle, mapStories, normalizeStories, taskPhaseId, taskTypeForPhase, taskTypes } from '../utils/backlog';
+import { composeStoryTitle, flattenStories, mapStories, normalizeStories, phaseBlocker, phaseReopenBlocker, storyProgress, taskPhaseId, taskTypeForPhase, taskTypes } from '../utils/backlog';
 import type { Actor, Asset, Backlog, Epic, Feature, Product, Sprint, Task, UserStory, WorkflowPhase } from '../types/portfolio';
 
 export type TaskInput = Pick<Task, 'title' | 'description'> & {phaseId: string;};
@@ -226,7 +226,7 @@ export function useBacklog(update: (fn: (p: Product) => Product) => void) {
           if (!allowed.has(storyId)) return b;
           const tasks: Task[] = inputs.flatMap((input) => {
             const phase = b.phases.find((item) => item.id === input.phaseId);
-            if (!input.title.trim() || !phase) return [];
+            if (!input.title.trim() || !phase || phaseBlocker(b, storyId, phase.id) || flattenStories(b).find((entry) => entry.story.id === storyId)?.story.skippedPhaseIds?.includes(phase.id)) return [];
             const assignmentType = taskTypeForPhase(b, phase);
             return [{ id: createId('tk'), title: input.title.trim(), phaseId: phase.id, assignmentType, description: input.description.trim(), done: false, storyId, conceptionStage: assignmentType === 'Conception Task' ? 'analyse' as const : undefined, adr: null }];
           });
@@ -243,6 +243,8 @@ export function useBacklog(update: (fn: (p: Product) => Product) => void) {
         set((b) => {
           const phase = b.phases.find((item) => item.id === changes.phaseId);
           if (!changes.title.trim() || !phase) return b;
+          const target = b.sprints.find((sprint) => sprint.id === sprintId)?.tasks.find((task) => task.id === taskId);
+          if (target && taskPhaseId(b, target) !== phase.id && flattenStories(b).find((entry) => entry.story.id === target.storyId)?.story.skippedPhaseIds?.includes(phase.id)) return b;
           return { ...b, sprints: b.sprints.map((sprint) => sprint.id === sprintId ? { ...sprint, increment: null, tasks: sprint.tasks.map((task) => {
             if (task.id !== taskId) return task;
             const assignmentType = taskPhaseId(b, task) === phase.id ? task.assignmentType : taskTypeForPhase(b, phase);
@@ -256,15 +258,37 @@ export function useBacklog(update: (fn: (p: Product) => Product) => void) {
         set((b) => mapStories(b, (story) => {
           if (story.id !== storyId) return story;
           const deliveries = { ...story.deliveries };
+          if (asset && phaseBlocker(b, storyId, phaseId)) return story;
           if (asset) deliveries[phaseId] = { asset, completedAt: today() };else delete deliveries[phaseId];
           return { ...story, deliveries };
         }));
       },
+      setPhaseSkipped(storyId: string, phaseId: string, skipped: boolean) {
+        set((b) => {
+          const story = flattenStories(b).find((entry) => entry.story.id === storyId)?.story;
+          const phase = b.phases.find((item) => item.id === phaseId);
+          if (!story || !phase || (skipped && b.sprints.some((sprint) => sprint.tasks.some((task) => task.storyId === storyId && taskPhaseId(b, task) === phaseId))) || (!skipped && phaseReopenBlocker(b, storyId, phaseId))) return b;
+          const next = mapStories(b, (item) => {
+            if (item.id !== storyId) return item;
+            const deliveries = { ...item.deliveries };
+            if (skipped) delete deliveries[phaseId];
+            return { ...item, deliveries, skippedPhaseIds: skipped ? [...new Set([...(item.skippedPhaseIds ?? []), phaseId])] : (item.skippedPhaseIds ?? []).filter((id) => id !== phaseId) };
+          });
+          return { ...next, sprints: next.sprints.map((sprint) => story.sprintId === sprint.id ? { ...sprint, increment: null } : sprint) };
+        });
+      },
       setTaskDone(sprintId: string, taskId: string, done: boolean) {
-        set((b) => ({
-          ...b,
-          sprints: b.sprints.map((sprint) => sprint.id === sprintId ? { ...sprint, increment: null, tasks: sprint.tasks.map((task) => task.id === taskId && (task.assignmentType !== 'Conception Task' || !done || task.conceptionStage === 'done') ? { ...task, done } : task) } : sprint)
-        }));
+        set((b) => {
+          const task = b.sprints.find((sprint) => sprint.id === sprintId)?.tasks.find((item) => item.id === taskId);
+          if (!task || task.done === done) return b;
+          const phaseId = taskPhaseId(b, task);
+          if (phaseId && (done ? phaseBlocker(b, task.storyId, phaseId) : phaseReopenBlocker(b, task.storyId, phaseId))) return b;
+          if (task.assignmentType === 'Conception Task' && done && task.conceptionStage !== 'done') return b;
+          return { ...b, sprints: b.sprints.map((sprint) => sprint.id === sprintId ? {
+            ...sprint, increment: null,
+            tasks: sprint.tasks.map((item) => item.id === taskId ? { ...item, done } : item)
+          } : sprint) };
+        });
       },
       setConceptionStage(sprintId: string, taskId: string, stage: 'analyse' | 'adr' | 'done', adr?: Task['adr']) {
         set((b) => ({ ...b, sprints: b.sprints.map((sprint) => sprint.id === sprintId ? { ...sprint, increment: null, tasks: sprint.tasks.map((task) => {
@@ -275,7 +299,12 @@ export function useBacklog(update: (fn: (p: Product) => Product) => void) {
         }) } : sprint) }));
       },
       setSprintIncrement(sprintId: string, increment: Sprint['increment']) {
-        set((b) => ({ ...b, sprints: b.sprints.map((sprint) => sprint.id === sprintId ? { ...sprint, increment } : sprint) }));
+        set((b) => {
+          const sprint = b.sprints.find((item) => item.id === sprintId);
+          const stories = flattenStories(b).map((entry) => entry.story).filter((story) => story.sprintId === sprintId);
+          if (increment && (!sprint?.tasks.length || sprint.tasks.some((task) => !task.done) || stories.some((story) => !storyProgress(b, story).done))) return b;
+          return { ...b, sprints: b.sprints.map((item) => item.id === sprintId ? { ...item, increment } : item) };
+        });
       },
       removeTask(sprintId: string, taskId: string) {
         set((b) => ({

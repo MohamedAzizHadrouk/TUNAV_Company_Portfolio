@@ -6,24 +6,24 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Poppins', 'system-ui', 'sans-serif'],
       },
       colors: {
         brand: {
-          DEFAULT: '#0A3DFF',
-          50: '#EEF2FF',
-          100: '#DCE4FF',
-          600: '#0832D6',
-          700: '#0727AA',
+          DEFAULT: '#0848FE',
+          50: '#F2F6FF',
+          100: '#E1E9FF',
+          600: '#063ACB',
+          700: '#052FA5',
         },
         accent: {
-          DEFAULT: '#0BC5F2',
-          50: '#E7F9FE',
+          DEFAULT: '#0099FF',
+          50: '#F2F6FF',
         },
-        ink: '#0B1220',
-        muted: '#5B6475',
-        line: '#E6E9F0',
-        canvas: '#F7F8FB',
+        ink: '#3F3F3F',
+        muted: '#6E6E6E',
+        line: '#DDDDDD',
+        canvas: '#F2F6FF',
       },
     },
   },

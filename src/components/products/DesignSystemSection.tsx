@@ -7,9 +7,10 @@ import type { ProductDesignSystem } from '../../types/portfolio';
 interface DesignSystemSectionProps {
   value: ProductDesignSystem;
   onChange: (value: ProductDesignSystem) => void;
+  readOnly?: boolean;
 }
 
-export function DesignSystemSection({ value, onChange }: DesignSystemSectionProps) {
+export function DesignSystemSection({ value, onChange, readOnly = false }: DesignSystemSectionProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<ProductDesignSystem>(value);
   const [hex, setHex] = useState('#0A3DFF');
@@ -19,6 +20,7 @@ export function DesignSystemSection({ value, onChange }: DesignSystemSectionProp
   return (
     <SectionCard
       title="Design System"
+      readOnly={readOnly}
       icon={LayersIcon}
       editing={editing}
       onEdit={() => {

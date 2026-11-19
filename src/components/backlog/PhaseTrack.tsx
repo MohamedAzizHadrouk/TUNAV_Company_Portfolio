@@ -7,7 +7,7 @@ export function PhaseTrack({ backlog, story }: {backlog: Backlog;story: UserStor
   return (
     <div className="flex gap-0.5" aria-hidden>
       {progress.phases.map(({ phase, state }) =>
-      <span key={phase.id} className={`h-1.5 w-5 rounded-full ${state === 'done' ? 'bg-brand' : state === 'in-progress' ? 'bg-brand/40' : 'bg-line'}`} />
+      <span key={phase.id} className={`h-1.5 w-5 rounded-full ${state === 'done' ? 'bg-brand' : state === 'skipped' ? 'bg-slate-300' : state === 'in-progress' ? 'bg-brand/40' : 'bg-line'}`} />
       )}
     </div>);
 

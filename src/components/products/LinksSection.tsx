@@ -13,9 +13,10 @@ const kinds: {id: ProductLink['kind'];label: string;}[] = [
 interface LinksSectionProps {
   links: ProductLink[];
   onChange: (links: ProductLink[]) => void;
+  readOnly?: boolean;
 }
 
-export function LinksSection({ links, onChange }: LinksSectionProps) {
+export function LinksSection({ links, onChange, readOnly = false }: LinksSectionProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<ProductLink[]>(links);
 
@@ -25,6 +26,7 @@ export function LinksSection({ links, onChange }: LinksSectionProps) {
   return (
     <SectionCard
       title="Solution & Demo Links"
+      readOnly={readOnly}
       icon={Link2Icon}
       editing={editing}
       onEdit={() => {

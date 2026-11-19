@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeftIcon, CalendarDaysIcon, CheckCircle2Icon, ChevronRightIcon, ClipboardListIcon, PencilIcon, PlusIcon, SearchIcon, TargetIcon, Trash2Icon } from 'lucide-react';
+import { ArrowLeftIcon, CalendarDaysIcon, CheckCircle2Icon, ChevronRightIcon, ClipboardListIcon, LockKeyholeIcon, PencilIcon, PlusIcon, SearchIcon, TargetIcon, Trash2Icon } from 'lucide-react';
 import { addDays, differenceInCalendarDays, format, isValid, parseISO } from 'date-fns';
 import { Modal } from '../Modal';
 import { AssetInput } from '../AssetInput';
@@ -8,7 +8,7 @@ import { AssetView } from '../AssetView';
 import { Field } from '../Field';
 import { EmptyState } from '../EmptyState';
 import { DeliveryModal } from './DeliveryModal';
-import { flattenStories, isStoryDone, phaseStateLabels, phaseStateTones, storyLabel, storyProgress, storyTone, taskPhaseId, type PhaseProgress, type StoryEntry } from '../../utils/backlog';
+import { flattenStories, isStoryDone, phaseBlocker, phaseReopenBlocker, phaseStateLabels, phaseStateTones, storyLabel, storyProgress, storyTone, taskPhaseId, type PhaseProgress, type StoryEntry } from '../../utils/backlog';
 import { today } from '../../utils/id';
 import type { TaskInput } from '../../hooks/useBacklog';
 import type { Asset, Backlog, Sprint, Task, WorkflowPhase } from '../../types/portfolio';
@@ -18,6 +18,11 @@ interface SprintsPanelProps {
   initialSprintId?: string | null;
   backlog: Backlog;
   canManage: boolean;
+  canManageSprint: boolean;
+  canEditSprint: (sprintId: string) => boolean;
+  canManageIncrement: boolean;
+  canManageStory: (storyId: string) => boolean;
+  canManagePhase: (storyId: string, phaseId: string) => boolean;
   onSaveSprint: (input: Omit<Sprint, 'id'> & {id?: string;}, subBacklogIds: string[]) => void;
   onDeleteSprint: (id: string) => void;
   onOpenStory: (id: string) => void;
@@ -28,6 +33,7 @@ interface SprintsPanelProps {
   onSetSprintIncrement: (sprintId: string, increment: Asset | null) => void;
   onRemoveTask: (sprintId: string, taskId: string) => void;
   onSetStoryDelivery: (storyId: string, phaseId: string, asset: Asset | null) => void;
+  onSetPhaseSkipped: (storyId: string, phaseId: string, skipped: boolean) => void;
 }
 
 function sprintStatus(sprint: Sprint): 'active' | 'upcoming' | 'past' {
@@ -41,7 +47,7 @@ function SummaryCard({ icon, label, value, detail }: { icon: React.ReactNode; la
   return <div className="flex items-center gap-3 rounded-xl border border-line bg-white p-4"><div className="rounded-lg bg-brand-50 p-2.5 text-brand-700">{icon}</div><div><p className="text-xs text-muted">{label}</p><p className="text-xl font-semibold tabular-nums text-ink">{value}</p><p className="text-[11px] text-muted">{detail}</p></div></div>;
 }
 
-export function SprintsPanel({ productId, initialSprintId, backlog, canManage, onSaveSprint, onDeleteSprint, onOpenStory, onAddTasks, onUpdateTask, onSetTaskDone, onSetConceptionStage, onSetSprintIncrement, onRemoveTask, onSetStoryDelivery }: SprintsPanelProps) {
+export function SprintsPanel({ productId, initialSprintId, backlog, canManage, canManageSprint, canEditSprint, canManageIncrement, canManageStory, canManagePhase, onSaveSprint, onDeleteSprint, onOpenStory, onAddTasks, onUpdateTask, onSetTaskDone, onSetConceptionStage, onSetSprintIncrement, onRemoveTask, onSetStoryDelivery, onSetPhaseSkipped }: SprintsPanelProps) {
   const [editing, setEditing] = useState<Sprint | null>(null);
   const [creating, setCreating] = useState(false);
   const [removing, setRemoving] = useState<Sprint | null>(null);
@@ -80,7 +86,7 @@ export function SprintsPanel({ productId, initialSprintId, backlog, canManage, o
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:max-w-xs"><SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" /><input aria-label="Search sprints" className="field py-2 pl-9" placeholder="Search sprint or story" value={query} onChange={(e) => setQuery(e.target.value)} /></div>
-          {canManage && <button className="btn-primary py-2" onClick={openCreate}><PlusIcon className="h-4 w-4" /> New sprint</button>}
+          {canManageSprint && <button className="btn-primary py-2" onClick={openCreate}><PlusIcon className="h-4 w-4" /> New sprint</button>}
         </div>
         <div role="group" aria-label="Filter sprints" className="flex flex-wrap gap-2">{(['all', 'active', 'upcoming', 'past'] as const).map((item) => <button key={item} aria-pressed={filter === item} onClick={() => setFilter(item)} className={`rounded-full border px-3 py-1.5 text-xs font-medium capitalize transition-colors ${filter === item ? 'border-brand bg-brand-50 text-brand-700' : 'border-line bg-white text-muted hover:border-brand/40 hover:text-ink'}`}>{item === 'all' ? `All (${backlog.sprints.length})` : `${item} (${backlog.sprints.filter((sprint) => sprintStatus(sprint) === item).length})`}</button>)}</div>
       </>}
@@ -88,9 +94,11 @@ export function SprintsPanel({ productId, initialSprintId, backlog, canManage, o
 
       {openSprint ?
       <SprintBoard
+        key={openSprint.id}
         sprint={openSprint}
         backlog={backlog}
-        canManage={canManage}
+        canManageIncrement={canManageIncrement || canEditSprint(openSprint.id)}
+        canManagePhase={canManagePhase}
         entries={entries.filter((entry) => entry.story.sprintId === openSprint.id)}
         onBack={() => setOpenId(null)}
         onOpenStory={onOpenStory}
@@ -100,12 +108,13 @@ export function SprintsPanel({ productId, initialSprintId, backlog, canManage, o
         onSetConceptionStage={onSetConceptionStage}
         onSetSprintIncrement={onSetSprintIncrement}
         onRemoveTask={onRemoveTask}
-        onSetStoryDelivery={onSetStoryDelivery} /> :
+        onSetStoryDelivery={onSetStoryDelivery}
+        onSetPhaseSkipped={onSetPhaseSkipped} /> :
 
 
       <>
       {backlog.sprints.length === 0 &&
-      <EmptyState title="No sprints yet" description="Create a sprint from a sub-product backlog." action={canManage && <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> New sprint</button>} />
+      <EmptyState title="No sprints yet" description="Create a sprint from a sub-product backlog." action={canManageSprint && <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> New sprint</button>} />
       }
 
       {backlog.sprints.length > 0 && visibleSprints.length === 0 && <EmptyState title="No matching sprints" description="Try another search term or status filter." />}
@@ -118,7 +127,7 @@ export function SprintsPanel({ productId, initialSprintId, backlog, canManage, o
           return (
             <article key={sprint.id} className="flex min-h-60 flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-sm transition-shadow hover:shadow-md">
               <div className="flex items-start justify-between gap-2 p-4 pb-0"><span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize ${status === 'active' ? 'bg-emerald-50 text-emerald-700' : status === 'upcoming' ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-muted'}`}>{status}</span><div className="flex">
-                {canManage && <>
+                {canEditSprint(sprint.id) && <>
                 <button className="icon-btn" aria-label={`Edit ${sprint.name}`} onClick={() => { setCreating(false); setEditing(sprint); }}>
                   <PencilIcon className="h-3.5 w-3.5" />
                 </button>
@@ -142,13 +151,13 @@ export function SprintsPanel({ productId, initialSprintId, backlog, canManage, o
           <header className="border-b border-line px-3 py-2">
             <h3 className="text-sm font-semibold text-ink">Not in a sprint <span className="font-normal text-muted">· {unassigned.length}</span></h3>
           </header>
-          <GroupedStories entries={unassigned} backlog={backlog} onOpen={onOpenStory} readOnly={!canManage} empty="" />
+          <GroupedStories entries={unassigned} backlog={backlog} onOpen={onOpenStory} readOnly={!unassigned.some((entry) => canManageStory(entry.story.id))} empty="" />
         </section>
       }
       </>
       }
 
-      {canManage && <SprintForm
+      {(canManageSprint || editing && canEditSprint(editing.id)) && <SprintForm
         productId={productId}
         open={creating || editing !== null}
         sprint={editing}
@@ -222,10 +231,11 @@ function GroupedStories({ entries, backlog, onOpen, readOnly, empty }: {entries:
 
 }
 
-function SprintBoard({ sprint, backlog, canManage, entries, onBack, onOpenStory, onAddTasks, onUpdateTask, onSetTaskDone, onSetConceptionStage, onSetSprintIncrement, onRemoveTask, onSetStoryDelivery }: {
+function SprintBoard({ sprint, backlog, canManageIncrement, canManagePhase, entries, onBack, onOpenStory, onAddTasks, onUpdateTask, onSetTaskDone, onSetConceptionStage, onSetSprintIncrement, onRemoveTask, onSetStoryDelivery, onSetPhaseSkipped }: {
   sprint: Sprint;
   backlog: Backlog;
-  canManage: boolean;
+  canManageIncrement: boolean;
+  canManagePhase: (storyId: string, phaseId: string) => boolean;
   entries: StoryEntry[];
   onBack: () => void;
   onOpenStory: (id: string) => void;
@@ -236,25 +246,32 @@ function SprintBoard({ sprint, backlog, canManage, entries, onBack, onOpenStory,
   onSetSprintIncrement: (sprintId: string, increment: Asset | null) => void;
   onRemoveTask: (sprintId: string, taskId: string) => void;
   onSetStoryDelivery: (storyId: string, phaseId: string, asset: Asset | null) => void;
+  onSetPhaseSkipped: (storyId: string, phaseId: string, skipped: boolean) => void;
 }) {
   const [view, setView] = useState<'stories' | 'kanban'>('stories');
   const [dragging, setDragging] = useState<string | null>(null);
   const [incrementDraft, setIncrementDraft] = useState<Asset | null>(sprint.increment ?? null);
+  const [incrementOpen, setIncrementOpen] = useState(false);
   const [incrementError, setIncrementError] = useState('');
   const [progressTaskId, setProgressTaskId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [deliveryFor, setDeliveryFor] = useState<{storyId: string;phase: WorkflowPhase;} | null>(null);
-  const groups = storyGroups(sprint, backlog, entries);
   const progressTask = sprint.tasks.find((task) => task.id === progressTaskId) ?? null;
   const editingTask = sprint.tasks.find((task) => task.id === editingTaskId) ?? null;
   const delivered = entries.filter((entry) => isStoryDone(backlog, entry.story)).length;
+  const applicablePhases = entries.flatMap((entry) => storyProgress(backlog, entry.story).phases).filter((phase) => phase.state !== 'skipped');
+  const donePhases = applicablePhases.filter((phase) => phase.state === 'done').length;
   const doneTasks = sprint.tasks.filter((task) => task.done).length;
-  const allDone = sprint.tasks.length > 0 && doneTasks === sprint.tasks.length;
+  const allDone = sprint.tasks.length > 0 && doneTasks === sprint.tasks.length && entries.every((entry) => isStoryDone(backlog, entry.story));
+  const storyColumns = `minmax(280px, 1.2fr) repeat(${Math.max(1, backlog.phases.length)}, minmax(220px, 1fr))`;
+  const boardMinWidth = Math.max(900, 280 + 220 * Math.max(1, backlog.phases.length));
   const storyTitle = (id: string) => entries.find((item) => item.story.id === id)?.story.title ?? 'User story';
   const phaseName = (task: Task) => backlog.phases.find((phase) => phase.id === taskPhaseId(backlog, task))?.name ?? task.assignmentType;
 
   const taskActions = {
-    canManage,
+    canManage: (task: Task) => canManagePhase(task.storyId, taskPhaseId(backlog, task) ?? ''),
+    blockerFor: (task: Task) => phaseBlocker(backlog, task.storyId, taskPhaseId(backlog, task) ?? ''),
+    reopenBlockerFor: (task: Task) => phaseReopenBlocker(backlog, task.storyId, taskPhaseId(backlog, task) ?? ''),
     onToggle: (task: Task, done: boolean) => onSetTaskDone(sprint.id, task.id, done),
     onSteps: (task: Task) => setProgressTaskId(task.id),
     onEdit: (task: Task) => setEditingTaskId(task.id),
@@ -270,45 +287,55 @@ function SprintBoard({ sprint, backlog, canManage, entries, onBack, onOpenStory,
           <p className="text-xs text-muted">{format(new Date(sprint.startDate), 'MMM d')} – {format(new Date(sprint.endDate), 'MMM d, yyyy')}</p>
           {sprint.goal && <p className="mt-1 max-w-2xl text-sm text-muted">{sprint.goal}</p>}
         </div>
-        <div role="tablist" aria-label="Board view" className="inline-flex self-start rounded-lg bg-canvas p-0.5 sm:self-auto">
+        <div role="group" aria-label="Board view" className="inline-flex self-start rounded-lg bg-canvas p-0.5 sm:self-auto">
           {(['stories', 'kanban'] as const).map((item) =>
-          <button key={item} type="button" role="tab" aria-selected={view === item} onClick={() => setView(item)}
-            className={`rounded-md px-3 py-1 text-sm font-medium ${view === item ? 'bg-white text-ink shadow-sm' : 'text-muted'}`}>
-              {item === 'stories' ? 'By story' : 'Kanban'}
+          <button key={item} type="button" aria-pressed={view === item} onClick={() => setView(item)}
+            className={`min-h-10 rounded-md px-4 py-1 text-sm font-medium ${view === item ? 'bg-white text-ink shadow-sm' : 'text-muted'}`}>
+              {item === 'stories' ? 'Story board' : 'Kanban'}
             </button>
           )}
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <SummaryCard icon={<ClipboardListIcon className="h-4 w-4" />} label="Stories delivered" value={`${delivered}/${entries.length}`} detail="Every phase done" />
-        <SummaryCard icon={<CheckCircle2Icon className="h-4 w-4" />} label="Tasks done" value={`${doneTasks}/${sprint.tasks.length}`} detail="In this sprint" />
-        <SummaryCard icon={<TargetIcon className="h-4 w-4" />} label="Story points" value={entries.reduce((sum, entry) => sum + (entry.story.points ?? 0), 0)} detail="Estimated scope" />
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-line bg-canvas px-4 py-3 text-sm" aria-label="Sprint progress">
+        <span><strong className="tabular-nums text-ink">{delivered}/{entries.length}</strong> <span className="text-muted">stories delivered</span></span>
+        <span><strong className="tabular-nums text-ink">{doneTasks}/{sprint.tasks.length}</strong> <span className="text-muted">tasks done</span></span>
+        <span><strong className="tabular-nums text-ink">{donePhases}/{applicablePhases.length}</strong> <span className="text-muted">phases done</span></span>
+        <span><strong className="tabular-nums text-ink">{entries.reduce((sum, entry) => sum + (entry.story.points ?? 0), 0)}</strong> <span className="text-muted">story points</span></span>
+        <span className="text-xs text-muted sm:ml-auto">Complete or skip a phase to unlock the next.</span>
       </div>
 
-      {entries.length === 0 &&
-      <p className="rounded-xl border border-dashed border-line bg-canvas px-4 py-6 text-sm text-muted">No user story in this sprint yet. Plan stories through a sub-product backlog when you edit the sprint.</p>
-      }
-
       {view === 'stories' ?
-      <div className="flex flex-col gap-4">
-          {groups.map((group) =>
-        <section key={group.id} aria-label={group.name} className="flex flex-col gap-3">
-              {groups.length > 1 && <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">{group.name}</h3>}
-              {group.stories.map((entry) =>
-          <StoryTaskCard
-            key={entry.story.id}
-            entry={entry}
-            sprint={sprint}
-            backlog={backlog}
-            actions={taskActions}
-            onOpenStory={onOpenStory}
-            onAddTask={(phaseId, title) => onAddTasks(sprint.id, entry.story.id, [{ title, description: '', phaseId }])}
-            onDelivery={(phase) => setDeliveryFor({ storyId: entry.story.id, phase })} />
-          )}
-            </section>
-        )}
-        </div> :
+      <section aria-label="Sprint stories" className="overflow-hidden rounded-2xl border border-line bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
+          <div><h3 className="text-sm font-semibold text-ink">Sprint stories <span className="ml-1 font-normal text-muted">· {entries.length}</span></h3><p className="mt-0.5 text-xs text-muted">One row per story. Tasks move from left to right as each phase is completed.</p></div>
+          <span className="text-xs font-medium text-brand-700">{backlog.phases.map((phase) => phase.name).join(' → ')}</span>
+        </div>
+        <div className="overflow-x-auto" role="region" aria-label="Story phase board" tabIndex={0}>
+          <div role="table" aria-label="Stories and workflow phases" style={{ minWidth: boardMinWidth }}>
+            <div role="row" className="grid border-b border-line bg-canvas text-xs font-semibold text-muted" style={{ gridTemplateColumns: storyColumns }}>
+              <div role="columnheader" className="sticky left-0 z-20 bg-canvas px-4 py-3">User story</div>
+              {backlog.phases.map((phase, index) => <div role="columnheader" key={phase.id} className="flex items-center gap-2 border-l border-line px-3 py-3"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-[11px] tabular-nums text-brand-700">{index + 1}</span>{phase.name}</div>)}
+            </div>
+            <div role="rowgroup" className="divide-y divide-line">
+              {entries.map((entry, index) => <StoryTaskRow
+                key={entry.story.id}
+                number={index + 1}
+                columns={storyColumns}
+                entry={entry}
+                sprint={sprint}
+                backlog={backlog}
+                actions={taskActions}
+                canManagePhase={(phaseId) => canManagePhase(entry.story.id, phaseId)}
+                onOpenStory={onOpenStory}
+                onAddTask={(phaseId, title) => onAddTasks(sprint.id, entry.story.id, [{ title, description: '', phaseId }])}
+                onSetPhaseSkipped={(phaseId, skipped) => onSetPhaseSkipped(entry.story.id, phaseId, skipped)}
+                onDelivery={(phase) => setDeliveryFor({ storyId: entry.story.id, phase })} />)}
+            </div>
+          </div>
+        </div>
+        {entries.length === 0 && <p className="border-t border-line px-4 py-6 text-sm text-muted">No user stories in this sprint yet. Assign stories when editing the sprint.</p>}
+      </section> :
 
       <div className="grid gap-3 md:grid-cols-2">
           {[{ done: false, title: 'To do' }, { done: true, title: 'Done' }].map((column) =>
@@ -316,9 +343,9 @@ function SprintBoard({ sprint, backlog, canManage, entries, onBack, onOpenStory,
           key={column.title}
           aria-label={column.title}
           className="min-h-40 rounded-xl border border-line bg-canvas p-2"
-          onDragOver={(event) => { if (canManage) event.preventDefault(); }}
+          onDragOver={(event) => { if (dragging) event.preventDefault(); }}
           onDrop={() => {
-            if (canManage && dragging) onSetTaskDone(sprint.id, dragging, column.done);
+            if (dragging && sprint.tasks.some((task) => task.id === dragging && taskActions.canManage(task))) onSetTaskDone(sprint.id, dragging, column.done);
             setDragging(null);
           }}>
               <h3 className="px-1 py-1 text-xs font-semibold text-ink">{column.title} <span className="font-normal text-muted">· {sprint.tasks.filter((task) => task.done === column.done).length}</span></h3>
@@ -326,16 +353,17 @@ function SprintBoard({ sprint, backlog, canManage, entries, onBack, onOpenStory,
                 {sprint.tasks.filter((task) => task.done === column.done).map((task) =>
             <li
               key={task.id}
-              draggable={canManage && task.assignmentType !== 'Conception Task'}
+              draggable={taskActions.canManage(task) && task.assignmentType !== 'Conception Task' && !(task.done ? taskActions.reopenBlockerFor(task) : taskActions.blockerFor(task))}
               onDragStart={() => setDragging(task.id)}
               className="rounded-lg border border-line bg-white p-2">
                     <p className="text-sm font-medium text-ink">{task.title}</p>
                     <span className="mt-1 inline-block rounded-md bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700">{phaseName(task)}</span>
                     <p className="mt-1 truncate text-xs text-muted">{storyTitle(task.storyId)}</p>
                     {task.assignmentType === 'Conception Task' && <p className="mt-1 text-xs text-amber-800">{conceptionLabel(task)}</p>}
-                    {canManage && (task.assignmentType === 'Conception Task' ?
+                    {!task.done && taskActions.blockerFor(task) && <p className="mt-1 text-xs text-amber-800">Waiting for {taskActions.blockerFor(task)?.phase.name}</p>}
+                    {taskActions.canManage(task) && (task.assignmentType === 'Conception Task' ?
               <button className="mt-2 text-xs font-medium text-brand" onClick={() => setProgressTaskId(task.id)}>Manage steps</button> :
-              <button type="button" className="mt-2 text-xs font-medium text-brand" onClick={() => onSetTaskDone(sprint.id, task.id, !column.done)}>{column.done ? 'Move to To do' : 'Move to Done'}</button>)}
+              <button type="button" className="mt-2 text-xs font-medium text-brand disabled:cursor-not-allowed disabled:text-muted" disabled={!!(task.done ? taskActions.reopenBlockerFor(task) : taskActions.blockerFor(task))} onClick={() => onSetTaskDone(sprint.id, task.id, !column.done)}>{column.done ? 'Move to To do' : 'Move to Done'}</button>)}
                   </li>
             )}
               </ul>
@@ -345,19 +373,19 @@ function SprintBoard({ sprint, backlog, canManage, entries, onBack, onOpenStory,
       }
 
       <section className="rounded-xl border border-line bg-white p-4" aria-label="Sprint increment">
-        <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold text-ink">Sprint increment</h3>
-            <p className="mt-1 text-xs text-muted">The delivered version, or proof of it. You can validate it once every task of the sprint is done; it then appears as a release in Realised.</p>
+            <p className="mt-0.5 text-xs text-muted">{allDone ? 'Every required story phase is complete. Add the delivered version or proof to validate the release.' : 'Available when every required phase of every story is complete.'}</p>
           </div>
-          <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${sprint.increment ? 'bg-emerald-50 text-emerald-700' : allDone ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-700'}`}>
-            {sprint.increment ? 'Released' : allDone ? 'Ready to validate' : `${doneTasks}/${sprint.tasks.length} tasks done`}
-          </span>
+          <div className="flex items-center gap-2"><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${sprint.increment ? 'bg-emerald-50 text-emerald-700' : allDone ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-700'}`}>
+              {sprint.increment ? 'Released' : allDone ? 'Ready to validate' : `${doneTasks}/${sprint.tasks.length} tasks done`}
+            </span><button type="button" className="min-h-10 rounded-md px-3 text-xs font-semibold text-brand hover:bg-brand-50" aria-expanded={incrementOpen} onClick={() => setIncrementOpen((open) => !open)}>{incrementOpen ? 'Hide details' : 'Show details'}</button></div>
         </div>
-        {sprint.increment && <div className="mt-3"><AssetView asset={sprint.increment} /></div>}
-        {canManage && <div className="mt-3 space-y-2"><AssetInput id={`increment-${sprint.id}`} value={incrementDraft} onChange={setIncrementDraft} placeholder="Release notes or a link to the delivered version" />
+        {incrementOpen && sprint.increment && <div className="mt-3"><AssetView asset={sprint.increment} /></div>}
+        {incrementOpen && canManageIncrement && <div className="mt-3 space-y-2 border-t border-line pt-3"><AssetInput id={`increment-${sprint.id}`} value={incrementDraft} onChange={setIncrementDraft} placeholder="Release notes or a link to the delivered version" />
           <button className="btn-primary" type="button" disabled={!allDone} onClick={() => {
-            if (!allDone) { setIncrementError('Finish every task before validating the increment.'); return; }
+            if (!allDone) { setIncrementError('Complete every phase of every story before validating the increment.'); return; }
             if (!incrementDraft?.value.trim()) { setIncrementError('Add a description, a link or a document.'); return; }
             onSetSprintIncrement(sprint.id, incrementDraft); setIncrementError('');
           }}>{sprint.increment ? 'Update increment' : 'Validate increment'}</button>{incrementError && <p role="alert" className="text-xs text-red-600">{incrementError}</p>}</div>}
@@ -379,21 +407,27 @@ function conceptionLabel(task: Task) {
 }
 
 interface TaskActions {
-  canManage: boolean;
+  canManage: (task: Task) => boolean;
+  blockerFor: (task: Task) => PhaseProgress | null;
+  reopenBlockerFor: (task: Task) => PhaseProgress | null;
   onToggle: (task: Task, done: boolean) => void;
   onSteps: (task: Task) => void;
   onEdit: (task: Task) => void;
   onRemove: (task: Task) => void;
 }
 
-/** One user story in the sprint: its tasks laid out by workflow phase. */
-function StoryTaskCard({ entry, sprint, backlog, actions, onOpenStory, onAddTask, onDelivery }: {
+/** One visually distinct row in the shared sprint story board. */
+function StoryTaskRow({ number, columns, entry, sprint, backlog, actions, canManagePhase, onOpenStory, onAddTask, onSetPhaseSkipped, onDelivery }: {
+  number: number;
+  columns: string;
   entry: StoryEntry;
   sprint: Sprint;
   backlog: Backlog;
   actions: TaskActions;
+  canManagePhase: (phaseId: string) => boolean;
   onOpenStory: (id: string) => void;
   onAddTask: (phaseId: string, title: string) => void;
+  onSetPhaseSkipped: (phaseId: string, skipped: boolean) => void;
   onDelivery: (phase: WorkflowPhase) => void;
 }) {
   const { story, epic, feature } = entry;
@@ -402,45 +436,44 @@ function StoryTaskCard({ entry, sprint, backlog, actions, onOpenStory, onAddTask
   const unphased = sprintTasks.filter((task) => !taskPhaseId(backlog, task));
 
   return (
-    <article className="rounded-2xl border border-line bg-white">
-      <header className="flex flex-col gap-2 border-b border-line px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <p className="truncate text-[11px] text-muted">{epic.title} › {feature.title}</p>
-          <button type="button" disabled={!actions.canManage} onClick={() => onOpenStory(story.id)} className="text-left text-sm font-semibold text-ink hover:text-brand disabled:cursor-default disabled:hover:text-ink">{story.title}</button>
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+    <div role="row" className={`grid ${number % 2 === 0 ? 'bg-canvas/30' : 'bg-white'}`} style={{ gridTemplateColumns: columns }}>
+      <div role="rowheader" className={`sticky left-0 z-10 min-w-0 border-l-4 border-brand px-4 py-4 ${number % 2 === 0 ? 'bg-slate-50' : 'bg-white'}`}>
+        <div className="flex items-center gap-2 text-xs text-muted"><span className="rounded-md bg-brand-50 px-1.5 py-0.5 font-semibold tabular-nums text-brand-700">#{String(number).padStart(2, '0')}</span><span className="truncate">{epic.title} › {feature.title}</span></div>
+        <button type="button" onClick={() => onOpenStory(story.id)} className="mt-2 block text-left text-sm font-semibold leading-5 text-ink hover:text-brand">{story.title}</button>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
           <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${story.priority === 'high' ? 'bg-red-50 text-red-700' : story.priority === 'low' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-800'}`}>{story.priority === 'high' ? 'High' : story.priority === 'low' ? 'Low' : 'Medium'}</span>
           <span className="rounded-full bg-canvas px-2 py-0.5 text-[11px] font-semibold tabular-nums text-ink">{story.points ?? '–'} pts</span>
-          <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${storyTone(backlog, story)}`}>{storyLabel(backlog, story)}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${storyTone(backlog, story)}`}>{storyLabel(backlog, story)}</span>
         </div>
-      </header>
-      <div className="grid gap-px bg-line md:grid-cols-[repeat(var(--phase-count),minmax(0,1fr))]" style={{ '--phase-count': Math.max(1, progress.phases.length) } as React.CSSProperties}>
-        {progress.phases.map((item) =>
+        {unphased.length > 0 && <div className="mt-3 border-t border-line pt-2"><p className="mb-1 text-xs font-medium text-amber-800">Tasks without a phase</p><ul className="space-y-1">{unphased.map((task) => <TaskRow key={task.id} task={task} actions={actions} />)}</ul></div>}
+      </div>
+        {progress.phases.map((item, index) =>
         <PhaseColumn
           key={item.phase.id}
           progress={item}
+          blockedBy={progress.phases.slice(0, index).reverse().find((phase) => phase.state !== 'done' && phase.state !== 'skipped') ?? null}
           tasks={sprintTasks.filter((task) => taskPhaseId(backlog, task) === item.phase.id)}
           elsewhere={item.total - sprintTasks.filter((task) => taskPhaseId(backlog, task) === item.phase.id).length}
           actions={actions}
+          canManage={canManagePhase(item.phase.id)}
           onAdd={(title) => onAddTask(item.phase.id, title)}
+          onSetSkipped={(skipped) => onSetPhaseSkipped(item.phase.id, skipped)}
+          canUnskip={!phaseReopenBlocker(backlog, story.id, item.phase.id)}
           onDelivery={() => onDelivery(item.phase)} />
         )}
-      </div>
-      {unphased.length > 0 &&
-      <div className="border-t border-line px-4 py-2">
-          <p className="mb-1 text-[11px] font-medium text-muted">Tasks without a phase · edit them to pick one</p>
-          <ul className="flex flex-col gap-1">{unphased.map((task) => <TaskRow key={task.id} task={task} actions={actions} />)}</ul>
-        </div>
-      }
-    </article>);
+    </div>);
 }
 
-function PhaseColumn({ progress, tasks, elsewhere, actions, onAdd, onDelivery }: {
+function PhaseColumn({ progress, blockedBy, tasks, elsewhere, actions, canManage, onAdd, onSetSkipped, canUnskip, onDelivery }: {
   progress: PhaseProgress;
+  blockedBy: PhaseProgress | null;
   tasks: Task[];
   elsewhere: number;
   actions: TaskActions;
+  canManage: boolean;
   onAdd: (title: string) => void;
+  onSetSkipped: (skipped: boolean) => void;
+  canUnskip: boolean;
   onDelivery: () => void;
 }) {
   const { phase, total, done, state, delivery } = progress;
@@ -452,11 +485,13 @@ function PhaseColumn({ progress, tasks, elsewhere, actions, onAdd, onDelivery }:
   };
 
   return (
-    <div className="flex min-w-0 flex-col gap-2 bg-white p-3">
+    <div role="cell" aria-label={`${phase.name} for this story`} className={`flex min-w-0 flex-col gap-2 border-l border-line p-3 ${blockedBy ? 'bg-slate-50' : state === 'skipped' ? 'bg-slate-50/70' : ''}`}>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold text-ink">{phase.name}</p>
-        <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${phaseStateTones[state]}`}>{phaseStateLabels[state]}{total > 0 ? ` · ${done}/${total}` : ''}</span>
+        <span className="truncate text-xs font-medium text-muted">{phase.deliveryLabel}</span>
+        <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${state !== 'skipped' && blockedBy ? 'bg-slate-200 text-slate-700' : phaseStateTones[state]}`}>{state !== 'skipped' && blockedBy ? 'Locked' : phaseStateLabels[state]}{total > 0 ? ` · ${done}/${total}` : ''}</span>
       </div>
+      {canManage && (state === 'skipped' ? <button type="button" disabled={!canUnskip} title={canUnskip ? undefined : 'Reopen completed later phases first'} className="self-start text-xs font-medium text-brand hover:underline disabled:cursor-not-allowed disabled:text-muted" onClick={() => onSetSkipped(false)}>Restore phase</button> : total === 0 && <button type="button" className="self-start text-xs font-medium text-muted hover:text-brand" onClick={() => onSetSkipped(true)}>Skip phase</button>)}
+      {blockedBy && state !== 'skipped' && <p className="flex items-start gap-1 text-[11px] text-slate-600"><LockKeyholeIcon className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />Complete {blockedBy.phase.name} ({blockedBy.done}/{blockedBy.total} tasks) to unlock this phase.</p>}
       {total > 0 &&
       <div className="h-1 overflow-hidden rounded-full bg-line" aria-hidden>
           <div className={`h-full rounded-full ${state === 'done' ? 'bg-emerald-500' : 'bg-brand'}`} style={{ width: `${done / total * 100}%` }} />
@@ -464,59 +499,47 @@ function PhaseColumn({ progress, tasks, elsewhere, actions, onAdd, onDelivery }:
       }
       {tasks.length > 0 && <ul className="flex flex-col gap-1">{tasks.map((task) => <TaskRow key={task.id} task={task} actions={actions} />)}</ul>}
       {elsewhere > 0 && <p className="text-[11px] text-muted">+ {elsewhere} {elsewhere === 1 ? 'task' : 'tasks'} in other sprints</p>}
-      {actions.canManage &&
+      {canManage && !blockedBy && state !== 'skipped' &&
       <form className="flex gap-1" onSubmit={(event) => { event.preventDefault(); add(); }}>
           <input aria-label={`New ${phase.name} task`} className="field min-w-0 py-1 text-xs" placeholder={`Add a ${phase.name} task`} value={title} onChange={(event) => setTitle(event.target.value)} />
           <button type="submit" className="icon-btn shrink-0" aria-label={`Add ${phase.name} task`} disabled={!title.trim()}><PlusIcon className="h-4 w-4" /></button>
         </form>
       }
-      {state === 'done' && (delivery ?
+      {!blockedBy && state === 'done' && (delivery ?
       <div className="rounded-lg bg-emerald-50/60 px-2 py-1.5">
           <p className="text-[11px] font-medium text-emerald-800">{phase.deliveryLabel}</p>
           <AssetView asset={delivery.asset} />
-          {actions.canManage && <button type="button" className="mt-0.5 block text-[11px] font-medium text-muted hover:text-brand" onClick={onDelivery}>Change</button>}
+          {canManage && <button type="button" className="mt-0.5 block text-[11px] font-medium text-muted hover:text-brand" onClick={onDelivery}>Change</button>}
         </div> :
-      actions.canManage && <button type="button" className="inline-flex items-center gap-1 self-start text-xs font-medium text-brand hover:text-brand-700" onClick={onDelivery}><PlusIcon className="h-3.5 w-3.5" /> Add {phase.deliveryLabel.toLowerCase()}</button>)}
+      canManage && <button type="button" className="inline-flex items-center gap-1 self-start text-xs font-medium text-brand hover:text-brand-700" onClick={onDelivery}><PlusIcon className="h-3.5 w-3.5" /> Add {phase.deliveryLabel.toLowerCase()}</button>)}
     </div>);
 }
 
 function TaskRow({ task, actions }: {task: Task;actions: TaskActions;}) {
   const conception = task.assignmentType === 'Conception Task';
+  const blocker = task.done ? actions.reopenBlockerFor(task) : actions.blockerFor(task);
+  const disabledReason = blocker ? task.done ? `Reopen ${blocker.phase.name} first` : `Complete ${blocker.phase.name} first` : conception && !task.done ? 'Conception tasks finish when their ADR is validated' : undefined;
   return (
     <li className="group flex items-start gap-2 rounded-md px-1 py-0.5 hover:bg-canvas">
       <input
         type="checkbox"
         className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-brand"
         aria-label={`Mark ${task.title} done`}
-        title={conception && !task.done ? 'Conception tasks finish when their ADR is validated' : undefined}
-        disabled={!actions.canManage || conception && !task.done}
+        title={disabledReason}
+        disabled={!actions.canManage(task) || !!blocker || conception && !task.done}
         checked={task.done}
         onChange={(event) => actions.onToggle(task, event.target.checked)} />
       <div className="min-w-0 flex-1">
         <p className={`text-xs ${task.done ? 'text-muted line-through' : 'text-ink'}`}>{task.title}</p>
-        {conception && <button type="button" disabled={!actions.canManage} className="text-[11px] font-medium text-amber-800 hover:underline disabled:no-underline" onClick={() => actions.onSteps(task)}>{conceptionLabel(task)}</button>}
+        {conception && <button type="button" disabled={!actions.canManage(task)} className="text-[11px] font-medium text-amber-800 hover:underline disabled:no-underline" onClick={() => actions.onSteps(task)}>{conceptionLabel(task)}</button>}
       </div>
-      {actions.canManage &&
+      {actions.canManage(task) &&
       <div className="flex shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
           <button type="button" className="icon-btn h-6 w-6" aria-label={`Edit ${task.title}`} onClick={() => actions.onEdit(task)}><PencilIcon className="h-3 w-3" /></button>
           <button type="button" className="icon-btn h-6 w-6 hover:text-red-600" aria-label={`Remove ${task.title}`} onClick={() => actions.onRemove(task)}><Trash2Icon className="h-3 w-3" /></button>
         </div>
       }
     </li>);
-}
-
-function storyGroups(sprint: Sprint, backlog: Backlog, entries: StoryEntry[]) {
-  const used = new Set<string>();
-  const groups = sprint.subBacklogIds.flatMap((id) => {
-    const sub = backlog.subBacklogs.find((item) => item.id === id);
-    if (!sub) return [];
-    const stories = entries.filter((entry) => sub.storyIds.includes(entry.story.id));
-    stories.forEach((entry) => used.add(entry.story.id));
-    return [{ id: sub.id, name: sub.name, stories }];
-  });
-  const rest = entries.filter((entry) => !used.has(entry.story.id));
-  if (rest.length) groups.push({ id: 'sprint-stories', name: groups.length ? 'Other stories' : 'User stories', stories: rest });
-  return groups;
 }
 
 function ConceptionModal({ task, onClose, onSave }: { task: Task; onClose: () => void; onSave: (stage: 'analyse' | 'adr' | 'done', adr: Asset | null) => void }) {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRightLeftIcon, DownloadIcon, EyeIcon, PencilIcon, SearchIcon, Trash2Icon } from 'lucide-react';
+import { ArrowRightLeftIcon, DownloadIcon, EyeIcon, ListTodoIcon, PencilIcon, SearchIcon, Trash2Icon } from 'lucide-react';
 import { EmptyState } from '../EmptyState';
 import { CapabilityStatusBadge } from './CapabilityBadges';
 import { capabilityStatuses } from '../../data/capabilities';
@@ -8,18 +8,21 @@ import type { Capability, CapabilityStatus, Domain } from '../../types/portfolio
 
 interface RegisterViewProps {
   capabilities: Capability[];
+  canCreate: boolean;
+  canEdit: (id: string) => boolean;
   domains: Domain[];
   hasAsIs: boolean;
   initialDomainId?: string;
   onView: (c: Capability) => void;
   onChangeStatus: (c: Capability) => void;
+  onPlan: (c: Capability) => void;
   onEdit: (c: Capability) => void;
   onDelete: (c: Capability) => void;
   onCreate: () => void;
   onImport: () => void;
 }
 
-export function RegisterView({ capabilities, domains, hasAsIs, initialDomainId = 'all', onView, onChangeStatus, onEdit, onDelete, onCreate, onImport }: RegisterViewProps) {
+export function RegisterView({ capabilities, canCreate, canEdit, domains, hasAsIs, initialDomainId = 'all', onView, onChangeStatus, onPlan, onEdit, onDelete, onCreate, onImport }: RegisterViewProps) {
   const [query, setQuery] = useState('');
   const [domainId, setDomainId] = useState(initialDomainId);
   const [status, setStatus] = useState<CapabilityStatus | 'all'>('all');
@@ -44,7 +47,7 @@ export function RegisterView({ capabilities, domains, hasAsIs, initialDomainId =
       <EmptyState
         title="The capability register is empty"
         description="Import capabilities from the As-is list, or add a new capability that is not implemented yet."
-        action={
+        action={canCreate &&
         <div className="flex flex-wrap justify-center gap-2">
             {hasAsIs && <button className="btn-ghost" onClick={onImport}><DownloadIcon className="h-4 w-4" /> Import from As-is</button>}
             <button className="btn-primary" onClick={onCreate}>New capability</button>
@@ -70,44 +73,47 @@ export function RegisterView({ capabilities, domains, hasAsIs, initialDomainId =
         </select>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-line">
+      <div className="overflow-x-auto rounded-xl border border-[#C9D5E6] bg-white">
         <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="border-b border-line bg-canvas text-xs text-muted">
+          <thead className="border-b border-[#C9D5E6] bg-brand-100 text-xs text-ink">
             <tr>
-              <th className="px-3 py-2 font-medium">Capability</th>
-              <th className="px-3 py-2 font-medium">Description</th>
-              <th className="px-3 py-2 font-medium">Status</th>
-              <th className="px-3 py-2 text-right font-medium">Actions</th>
+              <th className="px-4 py-3 font-semibold">Capability</th>
+              <th className="px-4 py-3 font-semibold">Description</th>
+              <th className="px-4 py-3 font-semibold">Status</th>
+              <th className="px-4 py-3 text-right font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
             {filtered.length === 0 &&
-            <tr><td colSpan={4} className="px-3 py-6 text-center text-sm text-muted">No capabilities match these filters.</td></tr>
+            <tr><td colSpan={4} className="px-4 py-6 text-center text-sm text-muted">No capabilities match these filters.</td></tr>
             }
             {filtered.map((capability) => {
               const removed = capability.status === 'removed';
               return (
                 <tr key={capability.id} className={`align-top ${removed ? 'bg-canvas/60' : ''}`}>
-                  <td className="px-3 py-2.5">
+                  <td className="px-4 py-3">
                     <button className={`text-left font-medium hover:text-brand ${removed ? 'text-muted line-through' : 'text-ink'}`} onClick={() => onView(capability)}>{capability.name}</button>
                     <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-                      {domainNames(domains, capability).map((name) => <span key={name} className="rounded-full bg-canvas px-1.5 py-px font-medium text-ink/70">{name}</span>)}
-                      {capability.asIsId && <span className="rounded-full bg-brand-50 px-1.5 py-px font-medium text-brand-700">From As-is</span>}
+                      {domainNames(domains, capability).map((name) => <span key={name} className="rounded-full border border-line bg-canvas px-2 py-0.5 font-medium text-ink">{name}</span>)}
+                      {capability.asIsId && <span className="rounded-full border border-brand-100 bg-brand-50 px-2 py-0.5 font-medium text-brand-700">From As-is</span>}
+                      {capability.links.length > 0 && <span className="rounded-full border border-brand-100 bg-brand-50 px-2 py-0.5 font-medium text-brand-700">{capability.links.length} {capability.links.length === 1 ? 'plan link' : 'plan links'}</span>}
                     </p>
                   </td>
-                  <td className="max-w-[380px] px-3 py-2.5 text-muted">
+                  <td className="max-w-[380px] px-4 py-3 text-muted">
                     <p className="line-clamp-2">{capability.description || '—'}</p>
                     {capability.statusNote && capability.status !== 'implemented' &&
                     <p className="mt-1 line-clamp-2 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-800">{capability.statusNote}</p>
                     }
                   </td>
-                  <td className="px-3 py-2.5"><CapabilityStatusBadge status={capability.status} /></td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-4 py-3"><CapabilityStatusBadge status={capability.status} /></td>
+                  <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">
+                      {canEdit(capability.id) && (capability.status === 'partial' || capability.status === 'not-started') &&
+                        <button type="button" className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-xs font-semibold text-brand hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand" aria-label={`Plan ${capability.name}`} onClick={() => onPlan(capability)}><ListTodoIcon className="h-4 w-4" aria-hidden />Plan</button>}
                       <button className="icon-btn" title="View more" aria-label={`View more about ${capability.name}`} onClick={() => onView(capability)}><EyeIcon className="h-3.5 w-3.5" /></button>
-                      <button className="icon-btn" title="Change status" aria-label={`Change status of ${capability.name}`} onClick={() => onChangeStatus(capability)}><ArrowRightLeftIcon className="h-3.5 w-3.5" /></button>
+                      {canEdit(capability.id) && <><button className="icon-btn" title="Change status" aria-label={`Change status of ${capability.name}`} onClick={() => onChangeStatus(capability)}><ArrowRightLeftIcon className="h-3.5 w-3.5" /></button>
                       <button className="icon-btn" title="Modify" aria-label={`Modify ${capability.name}`} onClick={() => onEdit(capability)}><PencilIcon className="h-3.5 w-3.5" /></button>
-                      <button className="icon-btn hover:text-red-600" title="Delete" aria-label={`Delete ${capability.name}`} onClick={() => onDelete(capability)}><Trash2Icon className="h-3.5 w-3.5" /></button>
+                      <button className="icon-btn hover:text-red-600" title="Delete" aria-label={`Delete ${capability.name}`} onClick={() => onDelete(capability)}><Trash2Icon className="h-3.5 w-3.5" /></button></>}
                     </div>
                   </td>
                 </tr>);

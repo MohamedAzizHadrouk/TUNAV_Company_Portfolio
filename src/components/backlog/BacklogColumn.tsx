@@ -25,11 +25,13 @@ interface BacklogColumnProps {
   addPlaceholder: string;
   emptyText: string;
   disabled?: boolean;
+  canAdd?: boolean;
+  canEdit?: (id: string) => boolean;
   checks?: Record<string, ColumnCheck>;
   onToggleCheck?: (id: string) => void;
 }
 
-export function BacklogColumn({ title, items, selectedId, onSelect, onAdd, onUpdate, onDelete, addPlaceholder, emptyText, disabled, checks, onToggleCheck }: BacklogColumnProps) {
+export function BacklogColumn({ title, items, selectedId, onSelect, onAdd, onUpdate, onDelete, addPlaceholder, emptyText, disabled, canAdd = true, canEdit = () => true, checks, onToggleCheck }: BacklogColumnProps) {
   const [draft, setDraft] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -102,12 +104,12 @@ export function BacklogColumn({ title, items, selectedId, onSelect, onAdd, onUpd
                 <p className="mt-0.5 text-xs text-muted">{item.meta}</p>
               </button>
               <div className="absolute right-1 top-1.5 flex opacity-0 focus-within:opacity-100 group-hover:opacity-100">
-                {onUpdate &&
+                {onUpdate && canEdit(item.id) &&
                 <button className="icon-btn h-7 w-7" aria-label={`Edit ${item.title}`} onClick={() => startEdit(item)}>
                     <PencilIcon className="h-3.5 w-3.5" />
                   </button>
                 }
-                <button
+                {canEdit(item.id) && <button
                   className="icon-btn h-7 w-7 hover:text-red-600"
                   aria-label={`Delete ${item.title}`}
                   onClick={() => {
@@ -115,13 +117,13 @@ export function BacklogColumn({ title, items, selectedId, onSelect, onAdd, onUpd
                   }}>
                   
                   <Trash2Icon className="h-3.5 w-3.5" />
-                </button>
+                  </button>}
               </div>
             </li>);
 
         })}
       </ul>
-      <form onSubmit={submit} className="flex items-center gap-1 border-t border-line p-1.5">
+      {canAdd && <form onSubmit={submit} className="flex items-center gap-1 border-t border-line p-1.5">
         <input
           aria-label={addPlaceholder}
           className="field border-transparent bg-canvas"
@@ -133,7 +135,7 @@ export function BacklogColumn({ title, items, selectedId, onSelect, onAdd, onUpd
         <button type="submit" className="icon-btn shrink-0 text-brand" aria-label={addPlaceholder} disabled={disabled}>
           <PlusIcon className="h-4 w-4" />
         </button>
-      </form>
+      </form>}
     </section>);
 
 }

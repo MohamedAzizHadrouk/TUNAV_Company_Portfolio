@@ -4,6 +4,7 @@ import { Modal } from '../../components/Modal';
 import { CapabilityModal, type CapabilityDraft } from '../../components/capabilities/CapabilityModal';
 import { RegisterView } from '../../components/capabilities/RegisterView';
 import { CapabilityDetailsModal, ImportAsIsModal, StatusModal } from '../../components/capabilities/RegisterModals';
+import { CapabilityPlanModal, type CapabilityPlanDraft } from '../../components/capabilities/CapabilityPlanModal';
 import { activeCapabilities, coverage, withDomains } from '../../utils/capabilities';
 import { capabilityStatuses } from '../../data/capabilities';
 import { createId } from '../../utils/id';
@@ -12,19 +13,22 @@ import type { AsIsItem, Capability, CapabilityStatus, Product } from '../../type
 interface CapabilitiesPanelProps {
   product: Product;
   update: (fn: (p: Product) => Product) => void;
+  canCreate: boolean;
+  canEdit: (id: string) => boolean;
   openCreate: boolean;
   onCreateOpened: () => void;
   openImport: boolean;
   onImportOpened: () => void;
 }
 
-export function CapabilitiesPanel({ product, update, openCreate, onCreateOpened, openImport, onImportOpened }: CapabilitiesPanelProps) {
+export function CapabilitiesPanel({ product, update, canCreate, canEdit, openCreate, onCreateOpened, openImport, onImportOpened }: CapabilitiesPanelProps) {
   const [params] = useSearchParams();
   const [editing, setEditing] = useState<Capability | null>(null);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [statusFor, setStatusFor] = useState<Capability | null>(null);
+  const [planForId, setPlanForId] = useState<string | null>(null);
   const [removing, setRemoving] = useState<Capability | null>(null);
   const [notice, setNotice] = useState('');
 
@@ -46,6 +50,7 @@ export function CapabilitiesPanel({ product, update, openCreate, onCreateOpened,
   const pct = coverage(caps);
   const domainParam = params.get('domain') ?? 'all';
   const viewing = viewingId ? caps.find((capability) => capability.id === viewingId) ?? null : null;
+  const planning = planForId ? caps.find((capability) => capability.id === planForId) ?? null : null;
   const countOf = (status: CapabilityStatus) => caps.filter((c) => c.status === status).length;
 
   const patch = (id: string, changes: Partial<Capability>) =>
@@ -95,6 +100,25 @@ export function CapabilitiesPanel({ product, update, openCreate, onCreateOpened,
     setStatusFor(null);
   };
 
+  const savePlan = ({ links, createdEpics, createdFeatures }: CapabilityPlanDraft) => {
+    if (!planning) return;
+    update((p) => {
+      const capability = p.capabilities.find((item) => item.id === planning.id);
+      if (!capability || (capability.status !== 'partial' && capability.status !== 'not-started')) return p;
+      const epics = [
+        ...p.backlog.epics.map((epic) => ({ ...epic, features: [...epic.features, ...createdFeatures.filter((item) => item.epicId === epic.id).map((item) => item.feature)] })),
+        ...createdEpics.map((epic) => ({ ...epic, features: createdFeatures.filter((item) => item.epicId === epic.id).map((item) => item.feature) }))
+      ];
+      return {
+        ...p,
+        backlog: { ...p.backlog, epics },
+        capabilities: p.capabilities.map((item) => item.id === capability.id ? { ...item, links } : item)
+      };
+    });
+    setPlanForId(null);
+    setNotice('Capability plan saved.');
+  };
+
   const remove = () => {
     if (!removing) return;
     const id = removing.id;
@@ -129,11 +153,14 @@ export function CapabilitiesPanel({ product, update, openCreate, onCreateOpened,
 
       <RegisterView
         capabilities={caps}
+        canCreate={canCreate}
+        canEdit={canEdit}
         domains={product.domains}
         hasAsIs={product.asIs.length > 0}
         initialDomainId={product.domains.some((domain) => domain.id === domainParam) ? domainParam : 'all'}
         onView={(capability) => setViewingId(capability.id)}
         onChangeStatus={setStatusFor}
+        onPlan={(capability) => setPlanForId(capability.id)}
         onEdit={setEditing}
         onDelete={setRemoving}
         onCreate={() => setCreating(true)}
@@ -157,9 +184,13 @@ export function CapabilitiesPanel({ product, update, openCreate, onCreateOpened,
 
       {statusFor && <StatusModal capability={statusFor} onClose={() => setStatusFor(null)} onSubmit={changeStatus} />}
 
+      {planning && (planning.status === 'partial' || planning.status === 'not-started') &&
+        <CapabilityPlanModal key={planning.id} capability={planning} backlog={product.backlog} onClose={() => setPlanForId(null)} onSubmit={savePlan} />}
+
       {viewing &&
       <CapabilityDetailsModal
         capability={viewing}
+        canEdit={canEdit(viewing.id)}
         domains={product.domains}
         asIs={product.asIs}
         backlog={product.backlog}

@@ -15,9 +15,10 @@ interface StoryListProps {
   onOpen: (id: string) => void;
   onAdd: (story: NewStory) => void;
   onManageActors: () => void;
+  allowAdd?: boolean;
 }
 
-export function StoryList({ feature, backlog, storyQuery = '', selectedStoryIds = [], blockedNotes = {}, onToggleStory, onOpen, onAdd, onManageActors }: StoryListProps) {
+export function StoryList({ feature, backlog, storyQuery = '', selectedStoryIds = [], blockedNotes = {}, onToggleStory, onOpen, onAdd, onManageActors, allowAdd = true }: StoryListProps) {
   const [actorId, setActorId] = useState('');
   const [want, setWant] = useState('');
   const [benefit, setBenefit] = useState('');
@@ -113,7 +114,7 @@ export function StoryList({ feature, backlog, storyQuery = '', selectedStoryIds 
           })}
           </ul>
 
-          {backlog.actors.length === 0 ?
+          {!allowAdd ? null : backlog.actors.length === 0 ?
         <div className="flex items-center justify-between gap-3 border-t border-line bg-canvas px-3 py-2">
               <p className="text-sm text-muted">Add actors first — every story is written for an actor.</p>
               <button className="btn-ghost shrink-0 px-3 py-1.5" onClick={onManageActors}>

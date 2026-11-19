@@ -13,7 +13,7 @@ import type { HardwareItem } from '../types/portfolio';
 export function HardwarePage() {
   const { hardware, setHardware, products } = usePortfolio();
   const { can } = useAccess();
-  const canEdit = can('portfolio.edit');
+  const canEdit = can('portfolio.edit') || can('hardware.manage');
   const [query, setQuery] = useState('');
   const [assignment, setAssignment] = useState<string>('all');
   const [editing, setEditing] = useState<HardwareItem | null>(null);
@@ -69,14 +69,14 @@ export function HardwarePage() {
       {filtered.length === 0 ?
       <EmptyState title={hardware.length ? 'No matching hardware' : 'No hardware yet'} description={hardware.length ? 'Try another filter or search.' : 'Add your first item to start tracking.'} /> :
 
-      <div className="overflow-x-auto rounded-2xl border border-line">
+      <div className="overflow-x-auto rounded-2xl border border-[#C9D5E6] bg-white">
           <table className="w-full min-w-[650px] text-left text-sm">
-            <thead className="border-b border-line bg-canvas text-xs text-muted">
+            <thead className="border-b border-[#C9D5E6] bg-brand-100 text-xs text-ink">
               <tr>
-                <th className="px-3 py-2 font-medium">Hardware</th>
-                <th className="px-3 py-2 font-medium">Assigned to</th>
-                <th className="px-3 py-2 text-right font-medium">Purchase price</th>
-                <th className="px-3 py-2"><span className="sr-only">Actions</span></th>
+                <th className="px-4 py-3 font-semibold">Hardware</th>
+                <th className="px-4 py-3 font-semibold">Assigned to</th>
+                <th className="px-4 py-3 text-right font-semibold">Purchase price</th>
+                <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">

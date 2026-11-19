@@ -1,5 +1,5 @@
 /* @import url() FONT IMPORTS MUST ALWAYS BE AT THE VERY TOP OF THIS FILE, ABOVE THE TAILWIND IMPORTS — DO NOT DELETE THIS COMMENT */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
 
 /* CRITICAL: THE FOLLOWING TAILWIND IMPORTS MUST NEVER BE DELETED OR REORDERED — DO NOT DELETE THIS COMMENT */
 @import 'tailwindcss/base';
@@ -12,27 +12,71 @@ html,
 body,
 #root {
   height: 100%;
-  background: #ffffff;
+  background: #f2f6ff;
 }
 body {
-  font-family: 'Inter', system-ui, sans-serif;
-  color: #0b1220;
+  font-family: 'Poppins', system-ui, sans-serif;
+  color: #3f3f3f;
   -webkit-font-smoothing: antialiased;
 }
 @layer components {
 .field {
-  @apply w-full rounded-lg border border-line bg-white px-2.5 py-1.5 text-sm text-ink placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/15;
+  @apply w-full min-h-10 rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20;
 }
 .btn-primary {
-  @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-brand-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50;
+  @apply inline-flex min-h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white shadow-[0_6px_16px_-8px_rgba(8,72,254,0.8)] transition-colors duration-150 hover:bg-brand-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:opacity-50;
 }
 .btn-ghost {
-  @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-medium text-ink transition-colors duration-150 hover:bg-canvas focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40;
+  @apply inline-flex min-h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-line bg-white px-4 py-2 text-sm font-medium text-ink transition-colors duration-150 hover:bg-canvas focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40;
 }
 .icon-btn {
-  @apply inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:bg-canvas hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40;
+  @apply inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors duration-150 hover:bg-canvas hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40;
 }
+
 .flow-item {
   @apply relative block w-full rounded-xl border border-line bg-white px-3 py-2.5 pr-7 text-left transition-colors hover:border-brand/40 hover:bg-brand-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40;
 }
+}
+
+main :where(.rounded-xl.border-line.bg-white, .rounded-2xl.border-line.bg-white) {
+  box-shadow: 0 8px 24px -20px rgba(63, 63, 63, 0.35);
+}
+
+main table {
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #fff;
+}
+
+main table thead[class],
+main [role="table"] [role="columnheader"] {
+  background: #e1e9ff;
+  color: #3f3f3f;
+  font-weight: 600;
+}
+
+main table thead th { color: #3f3f3f; }
+
+main table th,
+main table td {
+  border-right: 1px solid #d1d9e8;
+}
+
+main table th:last-child,
+main table td:last-child { border-right: 0; }
+
+main table tbody tr:nth-child(even) { background: #f2f6ff; }
+main table tbody tr:hover { background: #e1e9ff; }
+main table tbody td { border-top: 1px solid #d1d9e8; }
+main [role="table"] [role="row"] { border-color: #c9d5e6; }
+main [role="table"] [role="cell"],
+main [role="table"] [role="columnheader"] { border-color: #c9d5e6; }
+
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid #0848fe;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

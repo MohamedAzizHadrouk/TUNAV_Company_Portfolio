@@ -4,6 +4,7 @@ import { ChevronDownIcon, ChevronRightIcon, FolderPlusIcon, SearchIcon } from 'l
 import { useProduct } from '../../hooks/useProduct';
 import { findFeature } from '../../utils/capabilities';
 import { useBacklog } from '../../hooks/useBacklog';
+import { useAccess } from '../../contexts/AccessContext';
 import { ProductNotFound } from '../products/ProductNotFound';
 import { BacklogColumn, type ColumnCheck } from '../backlog/BacklogColumn';
 import { StoryList } from '../backlog/StoryList';
@@ -24,6 +25,7 @@ const tabs: {id: Tab;label: string;}[] = [
 export function BacklogStage() {
   const { product, update } = useProduct();
   const actions = useBacklog(update);
+  const { can, canWriteSection, canWriteCard, currentAccount } = useAccess();
   const [params] = useSearchParams();
   const linkedFeature = product ? findFeature(product.backlog, params.get('feature')) : null;
   const [tab, setTab] = useState<Tab>('backlog');
@@ -51,6 +53,10 @@ export function BacklogStage() {
   }, [product, q]);
 
   if (!product) return <ProductNotFound />;
+
+  const canManageAll = can('portfolio.edit') || can('backlog.manage') || canWriteSection(product.id, 'flow');
+  const canManageSubBacklog = canManageAll || can('subbacklogs.manage');
+  const canEditItem = (id: string) => currentAccount.roleId !== 'admin' && Array.isArray(currentAccount.assignments) ? canWriteCard(product.id, id) : canManageAll;
 
   const b = product.backlog;
   const epic = visibleEpics.find((item) => item.id === epicId) ?? visibleEpics[0] ?? null;
@@ -139,7 +145,7 @@ export function BacklogStage() {
       </div>
 
       <div role="tablist" className="mb-3 inline-flex rounded-lg bg-canvas p-0.5">
-        {tabs.map((item) =>
+        {tabs.filter((item) => canManageAll || item.id === 'backlog').map((item) =>
         <button
           key={item.id}
           role="tab"
@@ -161,7 +167,7 @@ export function BacklogStage() {
               <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
               <input aria-label="Search backlog" className="field pl-8" placeholder="Search epics, features, stories" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
-            {!selecting && <button type="button" className="btn-ghost" onClick={() => { setSelecting(true); setNotice(''); }} title="Select user stories to group into a sub-product backlog">
+            {canManageSubBacklog && !selecting && <button type="button" className="btn-ghost" onClick={() => { setSelecting(true); setNotice(''); }} title="Select user stories to group into a sub-product backlog">
               <FolderPlusIcon className="h-4 w-4" aria-hidden /> Create sub-product backlog
             </button>}
           </div>
@@ -190,17 +196,17 @@ export function BacklogStage() {
                       <p className="truncate text-sm font-medium text-ink">{item.name}</p>
                       <p className="text-xs text-muted">{count} {count === 1 ? 'user story' : 'user stories'}</p>
                     </div>
-                    <div className="flex shrink-0 gap-1">
+                    {canManageSubBacklog && <div className="flex shrink-0 gap-1">
                       <button className="btn-ghost px-2 py-1 text-xs" onClick={() => startEdit(item)}>Edit</button>
                       <button className="btn-ghost px-2 py-1 text-xs text-red-600" onClick={() => setRemoving(item)}>Delete</button>
-                    </div>
+                    </div>}
                   </li>);
               })}
             </ul>
             }
           </div>
           }
-          {selecting &&
+          {canManageSubBacklog && selecting &&
           <form
             className="mb-3 rounded-xl border border-brand/40 bg-brand-50/50 p-3"
             onSubmit={(event) => {
@@ -229,6 +235,8 @@ export function BacklogStage() {
           <div className="grid items-start gap-3 lg:grid-cols-[220px_220px_1fr]">
             <BacklogColumn
               title="Epics"
+              canAdd={canManageAll}
+              canEdit={canEditItem}
               items={visibleEpics.map((item) => ({ id: item.id, title: item.title, description: item.description, meta: `${item.features.length} features` }))}
               selectedId={epic?.id ?? null}
               onSelect={(id) => {
@@ -252,6 +260,8 @@ export function BacklogStage() {
             
             <BacklogColumn
               title="Features"
+              canAdd={canManageAll}
+              canEdit={canEditItem}
               items={visibleFeatures.map((item) => {
                 return { id: item.id, title: item.title, description: item.description, meta: `${item.stories.length} stories · ${sumPoints(item.stories)} pts` };
               })}
@@ -275,6 +285,7 @@ export function BacklogStage() {
             
             <div className="flex min-w-0 flex-col gap-3">
               <StoryList
+                allowAdd={canManageAll}
                 feature={feature}
                 backlog={b}
                 storyQuery={featureMatches ? '' : query}
@@ -283,11 +294,11 @@ export function BacklogStage() {
                 onToggleStory={selecting ? (id) => toggleIds([id]) : undefined}
                 onOpen={setStoryId}
                 onAdd={(story) => feature && actions.addStory(feature.id, story)}
-                onManageActors={() => setTab('actors')} />
+                onManageActors={() => canManageAll && setTab('actors')} />
               
             </div>
           </div>
-          <Modal
+          {canManageSubBacklog && <Modal
             open={removing !== null}
             title="Delete sub-product backlog"
             onClose={() => setRemoving(null)}
@@ -304,18 +315,19 @@ export function BacklogStage() {
               </>
             }>
             <p className="text-sm text-muted">Delete <span className="font-medium text-ink">{removing?.name}</span>? Its user stories stay in the backlog.</p>
-          </Modal>
+          </Modal>}
         </>
       }
 
-      {tab === 'actors' &&
+      {canManageAll && tab === 'actors' &&
       <ActorsPanel backlog={b} onAdd={actions.addActor} onUpdate={actions.updateActor} onDelete={actions.deleteActor} />
       }
 
-      {tab === 'workflow' && <WorkflowSettings backlog={b} onSave={actions.saveWorkflow} />}
+      {canManageAll && tab === 'workflow' && <WorkflowSettings backlog={b} onSave={actions.saveWorkflow} />}
 
       <StoryDrawer
         entry={openEntry}
+        readOnly={!openEntry || !canEditItem(openEntry.story.id)}
         backlog={b}
         onUpdate={actions.updateStory}
         onDelete={(id) => {

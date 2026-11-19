@@ -9,6 +9,7 @@ interface SectionCardProps {
   onCancel: () => void;
   children: React.ReactNode;
   className?: string;
+  readOnly?: boolean;
 }
 export function SectionCard({
   title,
@@ -18,7 +19,8 @@ export function SectionCard({
   onSave,
   onCancel,
   children,
-  className = ''
+  className = '',
+  readOnly = false
 }: SectionCardProps) {
   return <section aria-label={title} className={`flex flex-col rounded-2xl border bg-white transition-colors duration-150 ${editing ? 'border-brand/50 ring-4 ring-brand/5' : 'border-line'} ${className}`}>
       <header className="flex items-center justify-between gap-3 px-5 pt-4">
@@ -26,7 +28,7 @@ export function SectionCard({
           <Icon className="h-4 w-4 text-brand" aria-hidden />
           {title}
         </h2>
-        {editing ? <div className="flex items-center gap-1">
+        {readOnly ? null : editing ? <div className="flex items-center gap-1">
             <button className="rounded-md px-2.5 py-1 text-xs font-medium text-muted hover:bg-canvas hover:text-ink" onClick={onCancel}>
               Cancel
             </button>

@@ -17,8 +17,9 @@ function Stat({ icon, label, value, detail }: {icon: ReactNode;label: string;val
 }
 
 export function RealisedStage({ product, update }: { product: Product; update: (fn: (p: Product) => Product) => void }) {
-  const { can } = useAccess();
-  const canEdit = can('portfolio.edit');
+  const { can, canWriteCard, currentAccount } = useAccess();
+  const canEdit = can('portfolio.edit') || can('capabilities.manage');
+  const canEditCapability = (id: string) => currentAccount.roleId !== 'admin' && Array.isArray(currentAccount.assignments) ? canWriteCard(product.id, id) : canEdit;
   const backlog = product.backlog;
   const flow = `/products/${product.id}/flow`;
   const entries = flattenStories(backlog).map((entry) => ({ ...entry, progress: storyProgress(backlog, entry.story) }));
@@ -38,17 +39,18 @@ export function RealisedStage({ product, update }: { product: Product; update: (
   return <div className="flex flex-col gap-5">
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <Stat icon={<RocketIcon className="h-4 w-4" />} label="Releases" value={String(released.length)} detail={`${awaiting.length} sprint${awaiting.length === 1 ? '' : 's'} awaiting release`} />
-      <Stat icon={<CheckCircle2Icon className="h-4 w-4" />} label="Stories delivered" value={`${delivered.length}/${entries.length}`} detail="Every phase's tasks done" />
+      <Stat icon={<CheckCircle2Icon className="h-4 w-4" />} label="Stories delivered" value={`${delivered.length}/${entries.length}`} detail="All required phases done" />
       <Stat icon={<TargetIcon className="h-4 w-4" />} label="Points delivered" value={`${sumPoints(delivered.map((entry) => entry.story))}/${sumPoints(entries.map((entry) => entry.story))}`} detail="Story points" />
       <Stat icon={<PackageCheckIcon className="h-4 w-4" />} label="Capabilities implemented" value={`${implemented.length}/${inScope.length}`} detail={`${coverage(product.capabilities)}% coverage`} />
     </div>
 
     {backlog.phases.length > 0 && entries.length > 0 && <section aria-label="Delivery by phase" className="rounded-2xl border border-line bg-white p-4">
       <h2 className="text-sm font-semibold text-ink">Delivery by phase</h2>
-      <p className="mb-3 text-xs text-muted">How many user stories have finished each phase. A phase is finished when all of its tasks are done.</p>
+      <p className="mb-3 text-xs text-muted">How many user stories have finished each phase. Skipped phases are excluded from totals.</p>
       <ol className="grid gap-3 md:grid-cols-[repeat(var(--phase-count),minmax(0,1fr))]" style={{ '--phase-count': backlog.phases.length } as React.CSSProperties}>
         {backlog.phases.map((phase, index) => {
           const rows = entries.map((entry) => entry.progress.phases[index]);
+          const applicable = rows.filter((row) => row?.state !== 'skipped');
           const finished = rows.filter((row) => row?.state === 'done').length;
           const underway = rows.filter((row) => row?.state === 'in-progress' || row?.state === 'to-do').length;
           const tasksDone = rows.reduce((sum, row) => sum + (row?.done ?? 0), 0);
@@ -56,10 +58,10 @@ export function RealisedStage({ product, update }: { product: Product; update: (
           const deliverables = rows.filter((row) => row?.delivery).length;
           return <li key={phase.id} className="rounded-xl bg-canvas p-3">
             <p className="flex items-center gap-2 text-xs font-semibold text-ink"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-[11px] tabular-nums text-muted">{index + 1}</span>{phase.name}</p>
-            <p className="mt-2 text-sm text-ink"><span className="text-xl font-semibold tabular-nums">{finished}</span><span className="text-muted"> / {entries.length} stories finished</span></p>
+            <p className="mt-2 text-sm text-ink"><span className="text-xl font-semibold tabular-nums">{finished}</span><span className="text-muted"> / {applicable.length} stories finished</span></p>
             <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
-              <div className="bg-emerald-500" style={{ width: `${finished / entries.length * 100}%` }} />
-              <div className="bg-brand/40" style={{ width: `${underway / entries.length * 100}%` }} />
+              <div className="bg-emerald-500" style={{ width: `${applicable.length ? finished / applicable.length * 100 : 0}%` }} />
+              <div className="bg-brand/40" style={{ width: `${applicable.length ? underway / applicable.length * 100 : 0}%` }} />
             </div>
             <p className="mt-2 text-[11px] text-muted">{underway} under way · {tasksDone}/{tasksTotal} tasks done · {deliverables} {phase.deliveryLabel.toLowerCase()}{deliverables === 1 ? '' : 's'}</p>
           </li>;
@@ -72,7 +74,7 @@ export function RealisedStage({ product, update }: { product: Product; update: (
       <p className="mb-3 text-xs text-muted">Every linked feature is fully delivered. Confirm to update the capability register.</p>
       <ul className="space-y-2">{ready.map((capability) => <li key={capability.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-3 py-2.5">
         <div className="min-w-0"><p className="text-sm font-medium text-ink">{capability.name}</p><p className="text-xs text-muted">{domainNames(product.domains, capability).join(", ")} · {resolvedLinks(backlog, capability).map((link) => link.feature?.title ?? link.epic.title).join(', ')}</p></div>
-        {canEdit ? <button className="btn-primary" onClick={() => markImplemented(capability.id)}>Mark implemented</button> : <span className="text-xs text-muted">Needs edit access</span>}
+        {canEditCapability(capability.id) ? <button className="btn-primary" onClick={() => markImplemented(capability.id)}>Mark implemented</button> : <span className="text-xs text-muted">Needs edit access</span>}
       </li>)}</ul>
     </section>}
 
@@ -106,22 +108,20 @@ export function RealisedStage({ product, update }: { product: Product; update: (
       })}</ul>
     </section>}
 
-    <section aria-label="Delivered stories">
-      <h2 className="mb-2 text-sm font-semibold text-ink">Delivered stories <span className="font-normal text-muted">· {delivered.length}</span></h2>
-      {delivered.length === 0 ? <p className="rounded-xl border border-dashed border-line px-4 py-6 text-sm text-muted">No story has finished every phase yet. Stories in progress: {entries.filter((entry) => entry.progress.totalTasks > 0).length}.</p> :
-        <div className="overflow-x-auto rounded-xl border border-line">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead className="border-b border-line bg-canvas text-xs text-muted"><tr><th className="px-3 py-2 font-medium">User story</th>{backlog.phases.map((phase) => <th key={phase.id} className="px-3 py-2 font-medium">{phase.deliveryLabel}</th>)}</tr></thead>
-            <tbody className="divide-y divide-line">{delivered.map(({ story, epic, feature, progress }) => {
-              const sprint = backlog.sprints.find((item) => item.id === story.sprintId);
-              return <tr key={story.id} className="align-top">
-                <td className="max-w-[320px] px-3 py-2.5"><p className="text-[11px] text-muted">{epic.title} → {feature.title}</p><p className="font-medium text-ink">{story.title}</p><p className="mt-0.5 text-[11px] text-muted">{story.points ?? '–'} pts{sprint ? ` · ${sprint.name}` : ''}</p></td>
-                {progress.phases.map((row) => <td key={row.phase.id} className="max-w-[200px] px-3 py-2.5">{row.delivery ? <AssetView asset={row.delivery.asset} /> : <span className="text-xs text-muted">Not attached</span>}</td>)}
-              </tr>;
-            })}</tbody>
-          </table>
-        </div>}
-    </section>
+    {delivered.length > 0 && <section aria-label="Delivered stories">
+      <div className="overflow-x-auto rounded-xl border border-line">
+        <table className="w-full min-w-[720px] text-left text-sm">
+          <thead className="border-b border-line bg-canvas text-xs text-muted"><tr><th className="px-3 py-2 font-medium">User story</th>{backlog.phases.map((phase) => <th key={phase.id} className="px-3 py-2 font-medium">{phase.deliveryLabel}</th>)}</tr></thead>
+          <tbody className="divide-y divide-line">{delivered.map(({ story, epic, feature, progress }) => {
+            const sprint = backlog.sprints.find((item) => item.id === story.sprintId);
+            return <tr key={story.id} className="align-top">
+              <td className="max-w-[320px] px-3 py-2.5"><p className="text-[11px] text-muted">{epic.title} → {feature.title}</p><p className="font-medium text-ink">{story.title}</p><p className="mt-0.5 text-[11px] text-muted">{story.points ?? '–'} pts{sprint ? ` · ${sprint.name}` : ''}</p></td>
+              {progress.phases.map((row) => <td key={row.phase.id} className="max-w-[200px] px-3 py-2.5">{row.delivery ? <AssetView asset={row.delivery.asset} /> : <span className="text-xs text-muted">Not attached</span>}</td>)}
+            </tr>;
+          })}</tbody>
+        </table>
+      </div>
+    </section>}
 
     {entries.some((entry) => !entry.progress.done && entry.progress.totalTasks > 0) && <section aria-label="In progress">
       <h2 className="mb-2 text-sm font-semibold text-ink">In progress</h2>

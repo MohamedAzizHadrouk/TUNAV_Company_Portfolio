@@ -38,14 +38,15 @@ export function ProductDetail() {
         <ArrowLeftIcon className="h-4 w-4" /> All products
       </Link>
 
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="mb-5 flex flex-col gap-4 rounded-2xl border border-line border-l-4 border-l-brand bg-white p-5 sm:flex-row sm:items-center sm:justify-between sm:p-7">
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand text-base font-semibold text-white">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand text-base font-semibold text-white shadow-lg shadow-brand/20">
             {product.name.slice(0, 2).toUpperCase()}
           </div>
           <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-700">Product overview</p>
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-semibold tracking-tight text-ink">{product.name}</h1>
+              <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-[28px]">{product.name}</h1>
               <StatusPill status={product.status} />
             </div>
             <p className="mt-1 text-sm text-muted">{product.tagline || 'No tagline yet'}</p>

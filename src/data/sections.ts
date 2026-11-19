@@ -1,5 +1,7 @@
 import {
   CpuIcon,
+  CalendarDaysIcon,
+  LightbulbIcon,
   LayersIcon,
   Link2Icon,
   MegaphoneIcon,
@@ -9,6 +11,8 @@ import {
 import type { LucideIcon } from 'lucide-react';
 
 export type ProductSectionId =
+'agenda' |
+'ideas' |
 'hardware' |
 'sales-arguments' |
 'sales-offers' |
@@ -26,6 +30,8 @@ export const productSections: {
   description: string;
   group: SectionGroup;
 }[] = [
+{ id: 'agenda', label: 'Agenda', short: 'Agenda', icon: CalendarDaysIcon, description: 'Sprints, sprint planning, reviews and retrospectives for this product.', group: 'workflow' },
+{ id: 'ideas', label: 'Idea Gate', short: 'Ideas', icon: LightbulbIcon, description: 'Share ideas for the product, a domain, or a capability.', group: 'workflow' },
 { id: 'hardware', label: 'Hardware Capability', short: 'Hardware', icon: CpuIcon, description: 'Assigned hardware, capabilities, and public or private technical documents.', group: 'portfolio' },
 { id: 'sales-arguments', label: 'Sales Arguments', short: 'Arguments', icon: MegaphoneIcon, description: 'Why customers buy — every argument backed by a proof of concept.', group: 'portfolio' },
 { id: 'sales-offers', label: 'Sales Offer', short: 'Offers', icon: TagIcon, description: 'Subscription, installation, and hardware offers with selling prices.', group: 'portfolio' },

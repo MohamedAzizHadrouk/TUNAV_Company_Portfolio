@@ -5,6 +5,7 @@ import { DomainsPanel } from '../../pages/product/ProductDomains';
 import { CapabilitiesPanel } from '../../pages/product/ProductCapabilities';
 import { AsIsPanel } from '../capabilities/AsIsPanel';
 import type { Product } from '../../types/portfolio';
+import { useAccess } from '../../contexts/AccessContext';
 
 // Work order: define the domains, record the As-is, then build the capability register from it.
 const views = [
@@ -19,8 +20,10 @@ function readView(value: string | null): View {
 }
 
 export function CapabilitiesStage({ product, update }: { product: Product; update: (fn: (p: Product) => Product) => void }) {
+  const { can, canWriteSection, canWriteCard, currentAccount } = useAccess();
+  const canManage = can('portfolio.edit') || can('capabilities.manage') || canWriteSection(product.id, 'flow');
   const [params, setParams] = useSearchParams();
-  const view = readView(params.get('view'));
+  const view = canManage ? readView(params.get('view')) : 'register';
   const [askDomain, setAskDomain] = useState(false);
   const [askAsIs, setAskAsIs] = useState(false);
   const [askCapability, setAskCapability] = useState(false);
@@ -45,7 +48,7 @@ export function CapabilitiesStage({ product, update }: { product: Product; updat
   return <>
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
       <div role="tablist" aria-label="Capabilities" className="inline-flex max-w-full flex-wrap gap-1 rounded-lg bg-canvas p-0.5">
-        {views.map((item, index) => <button key={item.id} role="tab" aria-selected={view === item.id} onClick={() => openView(item.id)}
+        {views.filter((item) => canManage || item.id === 'register').map((item, index) => <button key={item.id} role="tab" aria-selected={view === item.id} onClick={() => openView(item.id)}
           className={`flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${view === item.id ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink'}`}>
           <span className="text-xs tabular-nums opacity-60">{index + 1}</span>
           {item.label}
@@ -53,9 +56,9 @@ export function CapabilitiesStage({ product, update }: { product: Product; updat
         </button>)}
       </div>
       <div className="flex flex-wrap gap-2">
-        {view === 'domains' && <button className="btn-primary" onClick={() => setAskDomain(true)}><PlusIcon className="h-4 w-4" /> Add domain</button>}
-        {view === 'as-is' && <button className="btn-primary" onClick={() => setAskAsIs(true)}><PlusIcon className="h-4 w-4" /> Add As-is capability</button>}
-        {view === 'register' && <>
+        {canManage && view === 'domains' && <button className="btn-primary" onClick={() => setAskDomain(true)}><PlusIcon className="h-4 w-4" /> Add domain</button>}
+        {canManage && view === 'as-is' && <button className="btn-primary" onClick={() => setAskAsIs(true)}><PlusIcon className="h-4 w-4" /> Add As-is capability</button>}
+        {canManage && view === 'register' && <>
           <button className="btn-ghost" onClick={() => setAskImport(true)}><DownloadIcon className="h-4 w-4" /> Import from As-is</button>
           <button className="btn-primary" onClick={() => setAskCapability(true)}><PlusIcon className="h-4 w-4" /> New capability</button>
         </>}
@@ -64,6 +67,6 @@ export function CapabilitiesStage({ product, update }: { product: Product; updat
 
     {view === 'domains' && <DomainsPanel product={product} update={update} openCreate={askDomain} onCreateOpened={closeDomain} />}
     {view === 'as-is' && <AsIsPanel product={product} update={update} openCreate={askAsIs} onCreateOpened={closeAsIs} />}
-    {view === 'register' && <CapabilitiesPanel product={product} update={update} openCreate={askCapability} onCreateOpened={closeCapability} openImport={askImport} onImportOpened={closeImport} />}
+    {view === 'register' && <CapabilitiesPanel product={product} update={update} canCreate={canManage} canEdit={(id) => currentAccount.roleId !== 'admin' && Array.isArray(currentAccount.assignments) ? canWriteCard(product.id, id) : canManage} openCreate={askCapability} onCreateOpened={closeCapability} openImport={askImport} onImportOpened={closeImport} />}
   </>;
 }

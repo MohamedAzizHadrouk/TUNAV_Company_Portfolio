@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { useProduct } from '../../hooks/useProduct';
+import { useAccess } from '../../contexts/AccessContext';
 import { ProductNotFound } from '../../components/products/ProductNotFound';
 import { ProductSubpage } from '../../components/products/ProductSubpage';
 import { EmptyState } from '../../components/EmptyState';
@@ -11,10 +12,12 @@ import type { SalesArgument } from '../../types/portfolio';
 
 export function ProductSalesArguments() {
   const { product, patch } = useProduct();
+  const { can, canWriteSection } = useAccess();
   const [editing, setEditing] = useState<SalesArgument | null>(null);
   const [creating, setCreating] = useState(false);
 
   if (!product) return <ProductNotFound />;
+  const canEdit = can('portfolio.edit') || canWriteSection(product.id, 'sales-arguments');
   const items = product.salesArguments;
 
   const save = (values: SalesArgumentDraft) => {
@@ -31,7 +34,7 @@ export function ProductSalesArguments() {
     <ProductSubpage
       product={product}
       sectionId="sales-arguments"
-      actions={<button className="btn-primary" onClick={() => setCreating(true)}><PlusIcon className="h-4 w-4" /> New argument</button>}>
+      actions={canEdit && <button className="btn-primary" onClick={() => setCreating(true)}><PlusIcon className="h-4 w-4" /> New argument</button>}>
       
       {items.length === 0 ?
       <EmptyState title="No sales arguments yet" description="Add the reasons customers choose this product, each with a proof of concept." /> :
@@ -44,32 +47,32 @@ export function ProductSalesArguments() {
                   <h2 className="text-lg font-semibold text-ink">{a.title}</h2>
                   {a.description && <p className="mt-1 text-sm leading-relaxed text-muted">{a.description}</p>}
                 </div>
-                <div className="flex shrink-0 gap-1 md:hidden">
+                {canEdit && <div className="flex shrink-0 gap-1 md:hidden">
                   <RowActions onEdit={() => setEditing(a)} onDelete={() => patch({ salesArguments: items.filter((x) => x.id !== a.id) })} />
-                </div>
+                </div>}
               </div>
               <div className="flex items-start gap-3">
                 <div className={`min-w-0 flex-1 rounded-xl px-4 py-3 ${a.proof ? 'bg-brand-50' : 'border border-dashed border-line'}`}>
                   <p className={`mb-1 text-[11px] font-semibold ${a.proof ? 'text-brand-700' : 'text-muted'}`}>Proof of concept</p>
                   {a.proof ? <AssetView asset={a.proof} /> : <p className="text-sm text-muted">Not provided yet</p>}
                 </div>
-                <div className="hidden shrink-0 gap-1 md:flex">
+                {canEdit && <div className="hidden shrink-0 gap-1 md:flex">
                   <RowActions onEdit={() => setEditing(a)} onDelete={() => patch({ salesArguments: items.filter((x) => x.id !== a.id) })} />
-                </div>
+                </div>}
               </div>
             </li>
         )}
         </ul>
       }
 
-      <SalesArgumentModal
+      {canEdit && <SalesArgumentModal
         open={creating || editing !== null}
         initial={editing}
         onClose={() => {
           setCreating(false);
           setEditing(null);
         }}
-        onSubmit={save} />
+        onSubmit={save} />}
       
     </ProductSubpage>);
 

@@ -92,6 +92,7 @@ export interface UserStory {
   phaseId: string;
   statusId: string;
   deliveries: Record<string, Delivery>;
+  skippedPhaseIds?: string[];
 }
 
 export interface Feature {
@@ -236,6 +237,18 @@ export interface Product {
   designSystem: ProductDesignSystem;
   links: ProductLink[];
   showcase: ShowcaseItem[];
+  ideas?: ProductIdea[];
+}
+
+export interface ProductIdea {
+  id: string;
+  title: string;
+  description: string;
+  scope: 'product' | 'domain' | 'capability';
+  domainId: string | null;
+  capabilityId: string | null;
+  authorName: string;
+  createdAt: string;
 }
 
 /* ---------- Company ---------- */
@@ -352,6 +365,7 @@ export interface CompanyEvent {
   location: string;
   description: string;
   productId?: string | null;
+  sprintId?: string | null;
 }
 
 export interface ClientContact {

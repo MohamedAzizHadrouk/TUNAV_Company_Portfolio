@@ -30,7 +30,7 @@ interface PortfolioState {
 const PortfolioContext = createContext<PortfolioState | null>(null);
 
 export function PortfolioProvider({ children }: {children: React.ReactNode;}) {
-  const { can } = useAccess();
+  const { can, currentAccount, canReadProduct, canReadCard, canWriteSection, canWriteCard } = useAccess();
   const denied = () => window.dispatchEvent(new Event('portfolio:permission-denied'));
   const [products, setProducts] = usePersisted<Product[]>('cp.v5.products', seedProducts, {
     legacyKey: 'cp.v4.products',
@@ -48,7 +48,7 @@ export function PortfolioProvider({ children }: {children: React.ReactNode;}) {
   const [events, setEvents] = usePersisted<CompanyEvent[]>('cp.v1.events', [], {
     normalize: (value) => Array.isArray(value) ? value.filter((item): item is CompanyEvent =>
       Boolean(item && typeof item === 'object' && typeof item.id === 'string' && typeof item.title === 'string' && typeof item.type === 'string' && typeof item.date === 'string'))
-      .map((item) => ({ id: item.id, title: item.title, type: item.type, date: item.date, time: typeof item.time === 'string' ? item.time : '', location: typeof item.location === 'string' ? item.location : '', description: typeof item.description === 'string' ? item.description : '', productId: typeof item.productId === 'string' ? item.productId : null })) : []
+      .map((item) => ({ id: item.id, title: item.title, type: item.type, date: item.date, time: typeof item.time === 'string' ? item.time : '', location: typeof item.location === 'string' ? item.location : '', description: typeof item.description === 'string' ? item.description : '', productId: typeof item.productId === 'string' ? item.productId : null, sprintId: typeof item.sprintId === 'string' ? item.sprintId : null })) : []
   });
   const [clients, setClients] = usePersisted<CompanyClient[]>('cp.v1.clients', [], {
     normalize: (value) => Array.isArray(value) ? value.flatMap((item) => {
@@ -80,15 +80,40 @@ export function PortfolioProvider({ children }: {children: React.ReactNode;}) {
     try { window.localStorage.setItem('cp.v1.hardware-offers-migrated', '1'); } catch { /* memory-only fallback */ }
   }, []);
 
+  const visibleProducts = currentAccount.roleId !== 'admin' && Array.isArray(currentAccount.assignments) ? products.filter((product) => canReadProduct(product.id)).map((product): Product => {
+    const visible = (id: string) => canReadCard(product.id, id);
+    const epics = product.backlog.epics.flatMap((epic) => {
+      const features = epic.features.flatMap((feature) => {
+        const stories = feature.stories.filter((story) => visible(story.id) || Boolean(story.sprintId && visible(story.sprintId)));
+        return visible(feature.id) || stories.length ? [{ ...feature, stories }] : [];
+      });
+      return visible(epic.id) || features.length ? [{ ...epic, features }] : [];
+    });
+    const visibleStories = epics.flatMap((epic) => epic.features.flatMap((feature) => feature.stories));
+    const visibleStoryIds = new Set(visibleStories.map((story) => story.id));
+    return { ...product,
+      capabilities: product.capabilities.filter((item) => visible(item.id)),
+      backlog: { ...product.backlog, epics,
+        sprints: product.backlog.sprints.filter((sprint) => visible(sprint.id) || (!currentAccount.assignments?.find((item) => item.productId === product.id)?.cards?.[sprint.id] && visibleStories.some((story) => story.sprintId === sprint.id))).map((sprint) => ({ ...sprint, tasks: sprint.tasks.filter((task) => visibleStoryIds.has(task.storyId)) })),
+        subBacklogs: product.backlog.subBacklogs.map((item) => ({ ...item, storyIds: item.storyIds.filter((id) => visibleStoryIds.has(id)) })).filter((item) => item.storyIds.length > 0)
+      }
+    };
+  }) : products;
+  const routeProductId = window.location.pathname.split('/')[2] ?? '';
+  const routeStage = new URLSearchParams(window.location.search).get('stage');
+  const routeSection = window.location.pathname.split('/')[3] ?? '';
+  const visitorWrite = canWriteSection(routeProductId, routeSection === 'flow' ? 'flow' : routeSection) || (routeSection === 'flow' && visibleProducts.find((product) => product.id === routeProductId)?.backlog.epics.some((epic) => [epic.id, ...epic.features.flatMap((feature) => [feature.id, ...feature.stories.map((story) => story.id)])].some((id) => canWriteCard(routeProductId, id)))) || (routeSection === 'flow' && visibleProducts.find((product) => product.id === routeProductId)?.capabilities.some((item) => canWriteCard(routeProductId, item.id))) || (routeSection === 'flow' && visibleProducts.find((product) => product.id === routeProductId)?.backlog.sprints.some((item) => canWriteCard(routeProductId, item.id)));
+  const flowWrite = routeStage === 'sprints' ? can('sprints.manage') || can('tasks.uiux.manage') || can('tasks.conception.manage') || can('tasks.development.manage') || can('increment.manage') || can('sprints.create') : routeStage === 'backlog' ? can('backlog.manage') || can('subbacklogs.manage') : can('capabilities.manage');
+  const sectionRoleWrite = !Array.isArray(currentAccount.assignments) && (routeSection === 'design-system' && can('design-system.manage') || routeSection === 'showcase' && can('showcase.manage') || ['sales-arguments', 'sales-offers'].includes(routeSection) && can('sales.manage'));
   return (
     <PortfolioContext.Provider
-      value={{ products, albums, brand, hardware, library, events, clients,
-        setProducts: (value) => { if ((window.location.pathname.endsWith('/sprints') || (window.location.pathname.endsWith('/flow') && new URLSearchParams(window.location.search).get('stage') === 'sprints')) ? can('sprints.manage') : can('portfolio.edit')) setProducts(value); else denied(); },
+      value={{ products: visibleProducts, albums, brand, hardware, library, events, clients,
+        setProducts: (value) => { if (can('portfolio.edit') || visitorWrite || sectionRoleWrite || (routeSection === 'flow' && flowWrite) || (routeSection === 'ideas' && !Array.isArray(currentAccount.assignments) && can('ideas.submit'))) setProducts(value); else denied(); },
         setAlbums: (value) => { if (can('portfolio.edit')) setAlbums(value); else denied(); },
         setBrand: (value) => { if (can('portfolio.edit')) setBrand(value); else denied(); },
-        setHardware: (value) => { if (can('portfolio.edit')) setHardware(value); else denied(); },
+        setHardware: (value) => { if (can('portfolio.edit') || (window.location.pathname === '/hardware' && can('hardware.manage')) || (!Array.isArray(currentAccount.assignments) && can('hardware.manage')) || canWriteSection(routeProductId, 'hardware')) setHardware(value); else denied(); },
         setLibrary: (value) => { if (can('portfolio.edit')) setLibrary(value); else denied(); },
-        setEvents: (value) => { if (can('portfolio.edit')) setEvents(value); else denied(); },
+        setEvents: (value) => { if (can('portfolio.edit') || (routeSection === 'agenda' && ((!Array.isArray(currentAccount.assignments) && can('sprints.manage')) || canWriteSection(routeProductId, 'agenda')))) setEvents(value); else denied(); },
         setClients: (value) => { if (can('portfolio.edit')) setClients(value); else denied(); } }}>
       
       {children}

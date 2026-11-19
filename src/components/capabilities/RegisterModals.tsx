@@ -171,12 +171,13 @@ export function StatusModal({ capability, onClose, onSubmit }: {
 
 /* ---------- View more ---------- */
 
-export function CapabilityDetailsModal({ capability, domains, asIs, backlog, productId, onClose, onChangeStatus, onEdit }: {
+export function CapabilityDetailsModal({ capability, domains, asIs, backlog, productId, canEdit, onClose, onChangeStatus, onEdit }: {
   capability: Capability;
   domains: Domain[];
   asIs: AsIsItem[];
   backlog: Backlog;
   productId: string;
+  canEdit: boolean;
   onClose: () => void;
   onChangeStatus: () => void;
   onEdit: () => void;
@@ -196,7 +197,7 @@ export function CapabilityDetailsModal({ capability, domains, asIs, backlog, pro
       size="lg"
       title={capability.name}
       onClose={onClose}
-      footer={
+      footer={canEdit &&
       <>
           <button className="btn-ghost" onClick={onChangeStatus}>Change status</button>
           <button className="btn-primary" onClick={onEdit}>Modify</button>
@@ -222,6 +223,7 @@ export function CapabilityDetailsModal({ capability, domains, asIs, backlog, pro
                 <Link to={link.feature ? `/products/${productId}/flow?stage=backlog&feature=${link.feature.id}` : `/products/${productId}/flow?stage=backlog`} className="text-brand hover:text-brand-700" onClick={onClose}>
                   {link.feature ? `${link.epic.title} › ${link.feature.title}` : link.epic.title}
                 </Link>
+                {link.stories.length > 0 && <ul className="ml-3 list-disc text-xs text-muted">{link.stories.map((story) => <li key={story.id}>{story.title}</li>)}</ul>}
               </li>
             )}
           </ul>

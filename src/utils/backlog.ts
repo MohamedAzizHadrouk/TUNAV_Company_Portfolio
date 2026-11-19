@@ -49,7 +49,7 @@ export function firstOpenStatus(phase: WorkflowPhase | undefined): WorkflowStatu
  * a phase is done when it has tasks and all of them are done, and a story is done
  * when every phase is done. */
 
-export type PhaseState = 'not-started' | 'to-do' | 'in-progress' | 'done';
+export type PhaseState = 'not-started' | 'to-do' | 'in-progress' | 'done' | 'skipped';
 
 export interface PhaseProgress {
   phase: WorkflowPhase;
@@ -72,14 +72,16 @@ export const phaseStateLabels: Record<PhaseState, string> = {
   'not-started': 'No tasks yet',
   'to-do': 'To do',
   'in-progress': 'In progress',
-  done: 'Done'
+  done: 'Done',
+  skipped: 'Skipped'
 };
 
 export const phaseStateTones: Record<PhaseState, string> = {
   'not-started': 'bg-slate-100 text-slate-600',
   'to-do': 'bg-amber-50 text-amber-800',
   'in-progress': 'bg-brand-50 text-brand-700',
-  done: 'bg-emerald-50 text-emerald-800'
+  done: 'bg-emerald-50 text-emerald-800',
+  skipped: 'bg-slate-100 text-slate-600'
 };
 
 /** The phase a task counts towards: its own phase, or the phase named in its assignment type ("UI/UX Task" → UI/UX). */
@@ -110,16 +112,33 @@ export function storyProgress(b: Backlog, s: UserStory): StoryProgress {
   const phases = b.phases.map((phase): PhaseProgress => {
     const own = tasks.filter((task) => taskPhaseId(b, task) === phase.id);
     const done = own.filter((task) => task.done).length;
-    return { phase, total: own.length, done, state: phaseState(own.length, done), delivery: s.deliveries[phase.id] };
+    return { phase, total: own.length, done, state: s.skippedPhaseIds?.includes(phase.id) && own.length === 0 ? 'skipped' : phaseState(own.length, done), delivery: s.deliveries[phase.id] };
   });
-  const firstOpen = phases.findIndex((item) => item.state !== 'done');
+  const firstOpen = phases.findIndex((item) => item.state !== 'done' && item.state !== 'skipped');
+  const applicable = phases.filter((item) => item.state !== 'skipped');
   return {
     phases,
     current: firstOpen < 0 ? Math.max(0, phases.length - 1) : firstOpen,
-    done: phases.length > 0 && firstOpen < 0,
+    done: applicable.length > 0 && firstOpen < 0,
     totalTasks: tasks.length,
     doneTasks: tasks.filter((task) => task.done).length
   };
+}
+
+/** A story can enter a phase only after every preceding phase has tasks and is done. */
+export function phaseBlocker(b: Backlog, storyId: string, phaseId: string): PhaseProgress | null {
+  const story = flattenStories(b).find((entry) => entry.story.id === storyId)?.story;
+  const index = b.phases.findIndex((phase) => phase.id === phaseId);
+  if (!story || index < 0) return null;
+  return storyProgress(b, story).phases.slice(0, index).reverse().find((phase) => phase.state !== 'done' && phase.state !== 'skipped') ?? null;
+}
+
+/** Keep completed later work intact when someone tries to reopen an earlier phase. */
+export function phaseReopenBlocker(b: Backlog, storyId: string, phaseId: string): PhaseProgress | null {
+  const story = flattenStories(b).find((entry) => entry.story.id === storyId)?.story;
+  const index = b.phases.findIndex((phase) => phase.id === phaseId);
+  if (!story || index < 0) return null;
+  return storyProgress(b, story).phases.slice(index + 1).find((phase) => phase.done > 0) ?? null;
 }
 
 export function isStoryDone(b: Backlog, s: UserStory): boolean {
@@ -155,6 +174,7 @@ export function normalizeStories(b: Backlog): Backlog {
 export function storyTone(b: Backlog, s: UserStory): string {
   const progress = storyProgress(b, s);
   if (progress.done) return phaseStateTones.done;
+  if (progress.phases.every((phase) => phase.state === 'skipped')) return phaseStateTones.skipped;
   if (progress.totalTasks === 0) return phaseStateTones['not-started'];
   return phaseStateTones[progress.phases[progress.current]?.state ?? 'to-do'];
 }
@@ -162,6 +182,7 @@ export function storyTone(b: Backlog, s: UserStory): string {
 export function storyLabel(b: Backlog, s: UserStory): string {
   const progress = storyProgress(b, s);
   if (progress.done) return 'Delivered';
+  if (progress.phases.every((phase) => phase.state === 'skipped')) return 'All phases skipped';
   if (progress.totalTasks === 0) return 'Not started';
   const current = progress.phases[progress.current];
   return `${current?.phase.name ?? '—'} · ${phaseStateLabels[current?.state ?? 'to-do']}`;

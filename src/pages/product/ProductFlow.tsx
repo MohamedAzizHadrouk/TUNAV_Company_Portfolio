@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from 'react-router-dom';
-import { ChevronRightIcon, CodeIcon, ListChecksIcon, RocketIcon, TimerIcon } from 'lucide-react';
+import { ArrowLeftIcon, CodeIcon, ListChecksIcon, RocketIcon, TimerIcon } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useProduct } from '../../hooks/useProduct';
 import { ProductNotFound } from '../../components/products/ProductNotFound';
@@ -40,15 +40,9 @@ export function ProductFlow() {
   const open = (id: StageId) => setParams({ stage: id });
 
   return <div className="w-full">
-    <nav aria-label="Breadcrumb" className="mb-2 flex flex-wrap items-center gap-1.5 text-sm text-muted">
-      <Link to="/products" className="hover:text-ink">Products</Link>
-      <ChevronRightIcon className="h-3.5 w-3.5" aria-hidden />
-      <Link to={`/products/${product.id}`} className="hover:text-ink">{product.name}</Link>
-      <ChevronRightIcon className="h-3.5 w-3.5" aria-hidden />
-      <span className="text-ink">Product flow</span>
-    </nav>
-    <h1 className="mb-1 text-xl font-semibold tracking-tight text-ink">{product.name} · Product flow</h1>
-    <p className="mb-4 text-sm text-muted">Manage capabilities, epics, features, user stories, sprints, tasks and what has been realised — all in one place.</p>
+    <Link to={`/products/${product.id}`} aria-label={`Back to ${product.name}`} title={`Back to ${product.name}`} className="mb-4 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-ink transition-colors hover:border-brand/40 hover:text-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
+      <ArrowLeftIcon className="h-4 w-4" aria-hidden />
+    </Link>
 
     <ol className="mb-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="Flow stages">
       {stages.map((item, index) => {
